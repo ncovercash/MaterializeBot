@@ -3,7 +3,7 @@
 define("DEBUG", true);
 
 if (DEBUG) {
-	error_reporting(E_ALL);
+    error_reporting(E_ALL);
 }
 
 // load libraries
@@ -11,31 +11,31 @@ require_once("vendor/autoload.php");
 use \Github\Client;
 
 if(!is_file("config.json")) {
-	die("You have not created a config.json file yet.\n");
+    die("You have not created a config.json file yet.\n");
 }
 
 require_once("config.php");
 
 class MaterialBot {
     protected $client;
-	public $repository;
+    public $repository;
     protected $openIssues, $closedIssues;
 
     protected $highestAnalyzedIssueNumber=0;
 
-	public function __construct($repository) {
+    public function __construct($repository) {
         $this->repository = $repository;
 
-		$this->client = new Client();
+        $this->client = new Client();
 
         $this->login();
 
-		$this->refreshIssues();
+        $this->refreshIssues();
 
         $this->updateIssueCounter();
 
         $this->run();
-	}
+    }
 
     protected function login() {
         // login
@@ -43,10 +43,10 @@ class MaterialBot {
         $this->client->authenticate($authentication["username"], $authentication["password"], Client::AUTH_HTTP_PASSWORD);
     }
 
-	protected function refreshIssues() {
+    protected function refreshIssues() {
         $this->closedIssues = $this->client->api("issue")->all($this->repository[0], $this->repository[1], Array("state" => "closed"));
         $this->openIssues = $this->client->api("issue")->all($this->repository[0], $this->repository[1], Array("state" => "open"));
-	}
+    }
 
     protected function run() {
         while (true) {
@@ -87,6 +87,7 @@ class MaterialBot {
             $statement  = "@".$issue["user"]["login"].",  \n";
             $statement .= "Thank you for creating an issue!  \n\n";
 
+            // codepens
             if (preg_match_all("/http(s|)\:\/\/(www\.|)codepen\.io\/[a-zA-Z0-9]+\/(pen|details|full|pres)\/[a-zA-Z0-9]+/", $issue["body"], $codepens)) {
                 $links = $codepens[0];
 
@@ -130,7 +131,7 @@ class MaterialBot {
                         $errors = self::getHTMLBodyErrors(file_get_contents($link.".html"));
 
                         foreach ($errors as $error) {
-                            $statement .= "* Codepen #".$i." ".$error."  \n";
+                            $statement .= "* Codepen [".$i."](".$link.") ".$error."  \n";
                         }
 
                         $i++;
@@ -148,6 +149,8 @@ class MaterialBot {
             $statement .= "(Note: This is a fully automated comment.)  \n";
 
             echo $statement;
+
+            $this->client->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => $statement));
         }
 
         $this->updateIssueCounter();
