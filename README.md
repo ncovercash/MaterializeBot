@@ -1,2 +1,3 @@
 # MaterializeBot
-Bot for Dogfalo/materialize
+
+Bot for Dogfalo/materialize that helps validate issues and other general tasks.

@@ -1,0 +1,6 @@
+{
+    "require": {
+        "knplabs/github-api": "*",
+        "php-http/guzzle6-adapter": "*"
+    }
+}
