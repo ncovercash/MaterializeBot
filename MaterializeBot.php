@@ -44,8 +44,8 @@ class MaterialBot {
     }
 
 	protected function refreshIssues() {
-        $this->closedIssues = $this->client->api("issue")->all($this->repository[0], $this->repository[1], Array("state" => "closed"));
-        $this->openIssues = $this->client->api("issue")->all($this->repository[0], $this->repository[1], Array("state" => "open"));
+            $this->closedIssues = $this->client->api("issue")->all($this->repository[0], $this->repository[1], Array("state" => "closed"));
+            $this->openIssues = $this->client->api("issue")->all($this->repository[0], $this->repository[1], Array("state" => "open"));
 	}
 
     protected function run() {
@@ -87,10 +87,13 @@ class MaterialBot {
             $statement  = "@".$issue["user"]["login"].",  \n";
             $statement .= "Thank you for creating an issue!  \n\n";
 
+	    // TODO Make a function for each site / separate this into sites / make helper classes for each site
             if (preg_match_all("/http(s|)\:\/\/(www\.|)codepen\.io\/[a-zA-Z0-9]+\/(pen|details|full|pres)\/[a-zA-Z0-9]+/", $issue["body"], $codepens)) {
                 $links = $codepens[0];
 
                 if (count($links) == 1) {
+			
+		    // TODO There's no need for a message if there aren't any issues, no? 
                     $statement .= "Your codepen at ".$links[0]." is greatly appreciated!  \n";
 
                     $errors = self::getHTMLBodyErrors(file_get_contents($links[0].".html"));
