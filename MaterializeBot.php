@@ -16,7 +16,9 @@ if(!is_file("config.json")) {
 
 require_once("config.php");
 
-class MaterialBot {
+class Bot {
+    private const tidy_config = Array();
+    private const jshint_header_length = 15;
     protected $client;
     public $repository;
     protected $openIssues, $closedIssues;
@@ -70,12 +72,16 @@ class MaterialBot {
 
     public static function getHTMLErrors(string $in) : array {
         $tidy = new Tidy();
-        $tidy->parseString($in);
+        $tidy->parseString($in, self::tidy_config);
         return explode("\n", $tidy->errorBuffer);
     }
 
     public static function getHTMLBodyErrors(string $in) : array {
         return self::getHTMLErrors("<!DOCTYPE html><head><title>null</title></head><body>".$in."</body></html>");
+    }
+
+    public static function getCodepenJSErrors(string $in) : array {
+        
     }
 
     public static function getCodepenStatement(array $issue, bool &$hasIssues) : string {
@@ -86,6 +92,7 @@ class MaterialBot {
             if (count($links) == 1) {
                 $statement .= "Your codepen at ".$links[0]." is greatly appreciated!  \n";
 
+                // HTML
                 $errors = self::getHTMLBodyErrors(file_get_contents($links[0].".html"));
 
                 if (count($errors) > 0) {
@@ -98,6 +105,30 @@ class MaterialBot {
                     }
                 }
 
+                unset($errors);
+
+                // JS
+                $js = file_get_contents($links[0].".js");
+                $js_header = file_get_contents("jshint_header.js");
+                file_put_contents("tmp.js", $js_header.$js);
+
+                exec("/usr/local/bin/jshint tmp.js", $errors);
+
+                $errors = array_filter($errors, function($in) {
+                    return preg_match("/tmp.js/", $in);
+                });
+                foreach ($errors as $error) {
+                    $error = preg_replace("/tmp.js\: /", "", $error);
+                    preg_match('/\d+/', $$error, $matches); 
+                    $line = $matches[0];
+                    $line -= self::jshint_header_length;
+                    $statement .= "* JS ".$error."  \n";
+                }
+
+                if (count($errors) > 0) {
+                    $statement .= "  \nPlease note, if you preprocess HTML or JS, the line and column numbers are for the processed code.  \n";
+                    $statement .= "Additionally, any added libraries will be omitted in the above check.  \n";
+                }
                 $statement .= "  \n";
             } else {
                 $statement .= "Your codepens ";
@@ -132,6 +163,9 @@ class MaterialBot {
 
                     $i++;
                     $statement .= "  \n";
+                }
+                if (codepensHaveErrors) {
+                    $statement .= "Please note, if you preprocess HTML or JS, the line and column numbers are for the processed code.  \n";
                 }
             }
         }
@@ -192,4 +226,4 @@ class MaterialBot {
     }
 }
 
-$bot = new MaterialBot($repository);
+$bot = new Bot($repository);
