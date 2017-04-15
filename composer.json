@@ -1,6 +1,7 @@
 {
     "require": {
         "knplabs/github-api": "*",
-        "php-http/guzzle6-adapter": "*"
+        "php-http/guzzle6-adapter": "*",
+        "tburry/pquery": "*"
     }
 }

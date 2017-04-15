@@ -4,8 +4,8 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#composer-lock-the-lock-file",
         "This file is @generated automatically"
     ],
-    "hash": "f1bf064ea9135e862557de0e320f176a",
-    "content-hash": "c262dea5f7672ad3ceb6bdfe929db83f",
+    "hash": "ea1a50d7033699d6148890948bd146e7",
+    "content-hash": "e429794fa4546ab9177c33ce8912159b",
     "packages": [
         {
             "name": "clue/stream-filter",
@@ -913,6 +913,58 @@
                 "options"
             ],
             "time": "2017-03-21 21:44:32"
+        },
+        {
+            "name": "tburry/pquery",
+            "version": "v1.1.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/tburry/pquery.git",
+                "reference": "872339ffd38d261c4417ea1855428b1b4ff9abf1"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/tburry/pquery/zipball/872339ffd38d261c4417ea1855428b1b4ff9abf1",
+                "reference": "872339ffd38d261c4417ea1855428b1b4ff9abf1",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=5.3.0"
+            },
+            "require-dev": {
+                "htmlawed/htmlawed": "dev-master"
+            },
+            "type": "library",
+            "autoload": {
+                "classmap": [
+                    "IQuery.php",
+                    "gan_formatter.php",
+                    "gan_node_html.php",
+                    "gan_parser_html.php",
+                    "gan_selector_html.php",
+                    "gan_tokenizer.php",
+                    "gan_xml2array.php",
+                    "pQuery.php"
+                ]
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "LGPL-2.1"
+            ],
+            "authors": [
+                {
+                    "name": "Todd Burry",
+                    "email": "todd@vanillaforums.com",
+                    "role": "developer"
+                }
+            ],
+            "description": "A jQuery like html dom parser written in php.",
+            "keywords": [
+                "dom",
+                "ganon",
+                "php"
+            ],
+            "time": "2016-01-14 20:55:00"
         }
     ],
     "packages-dev": [],

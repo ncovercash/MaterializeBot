@@ -47,7 +47,7 @@ class Bot {
 
         echo "Bot started...running as of issue ".$this->highestAnalyzedIssueNumber."\n";
 
-        $this->highestAnalyzedIssueNumber = 31;
+        $this->highestAnalyzedIssueNumber = 37;
 
         $this->run();
     }
@@ -95,14 +95,25 @@ class Bot {
         $statement = "";
         if (preg_match_all("/http(s|)\:\/\/(www\.|)codepen\.io\/[a-zA-Z0-9\-]+\/(pen|details|full|pres)\/[a-zA-Z0-9]+/", $issue["body"], $codepens) && !preg_match("/xbzPQV/", $issue["body"])) {
             $links = $codepens[0];
-            if (count($codepens) == 1) {
+            if (count($links) == 1) {
                 $link = $links[0];
 
                 $statement .= "Your codepen at ".$link." is greatly appreciated!  \n";
                 $statement .= "If there are any issues below, please fix them:  \n";
 
+                $page = file_get_contents($link);
+
+                if ($page === false) {
+                    $statement .= "* The codepen does not exist or could not be found  \n";
+                }
+
                 $html = file_get_contents($link.".html");
                 $js = file_get_contents($link.".js");
+
+                if (!preg_match("/materialize\.(min\.js|js)/", $page) ||
+                    !preg_match("/materialize\.(min\.css|css)/", $page)) {
+                    $statement .= "* The codepen may not correctly include materialize  \n";
+                }
 
                 $errors = self::getHTMLBodyErrors($html);
 
@@ -122,7 +133,7 @@ class Bot {
                 $errors = self::specificPlatformErrors($html, $js, $hasIssues);
 
                 foreach ($errors as $error) {
-                    $statement .= "* Materialize ".$error."  \n";
+                    $statement .= "* ".$error."  \n";
                 }
 
                 if ($hasIssues) {
@@ -141,8 +152,18 @@ class Bot {
                 $statement .= "If there are any issues below, please fix them:  \n";
 
                 foreach ($links as $link) {
+                    $page = file_get_contents($link);
+
+                    if ($page === false) {
+                        $statement .= "* The codepen does not exist or could not be found  \n";
+                    }
                     $html = file_get_contents($link.".html");
                     $js = file_get_contents($link.".js");
+
+                    if (!preg_match("/materialize\.(min\.js|js)/", $page) ||
+                        !preg_match("/materialize\.(min\.css|css)/", $page)) {
+                        $statement .= "* The codepen may not correctly include materialize  \n";
+                    }
 
                     $errors = self::getHTMLBodyErrors($html);
 
@@ -161,7 +182,118 @@ class Bot {
                     $errors = self::specificPlatformErrors($html, $js, $hasIssues);
 
                     foreach ($errors as $error) {
-                        $statement .= "* Codepen [".$i."](".$link.") Materialize ".$error."  \n";
+                        $statement .= "* Codepen [".$i."](".$link.") ".$error."  \n";
+                    }
+
+                    $i++;
+                    $statement .= "  \n";
+                }
+
+                if ($hasIssues) {
+                    $statement .= "  \n  \nPlease note, if you preprocess HTML or JS, the line and column numbers are for the processed code.  \n";
+                    $statement .= "Additionally, any added libraries will be omitted in the above check.  \n";
+                    $hasIssues = true;
+                }
+            }
+        }
+        return $statement."  \n";
+    }
+
+    public static function getJSFiddleStatement(array $issue, bool &$hasIssues) : string {
+        $statement = "";
+        if (preg_match_all("/http(s|)\:\/\/(www\.|)jsfiddle\.net\/[a-zA-Z0-9\-]+\/[a-zA-Z0-9]+/", $issue["body"], $fiddles)) {
+            $links = $fiddles[0];
+            if (count($links) == 1) {
+                $link = $links[0];
+
+                $statement .= "Your fiddle at ".$link." is greatly appreciated!  \n";
+                $statement .= "If there are any issues below, please fix them:  \n";
+
+                $page = file_get_contents($link);
+
+                if ($page === false) {
+                    $statement .= "* The fiddle does not exist or could not be found  \n";
+                }
+
+                $dom = pQuery::parseStr($page);
+                $html = htmlspecialchars_decode($dom->query("textarea#id_code_html")[0]->html());
+                $js = htmlspecialchars_decode($dom->query("textarea#id_code_js")[0]->html());
+
+                if (!preg_match("/materialize\.(min\.js|js)/", $page) ||
+                    !preg_match("/materialize\.(min\.css|css)/", $page)) {
+                    $statement .= "* The fiddle may not correctly include materialize  \n";
+                }
+
+                $errors = self::getHTMLBodyErrors($html);
+
+                foreach ($errors as $error) {
+                    if (strlen($error) != 0) {
+                        $statement .= "* HTML ".$error."  \n";
+                    }
+                }
+
+                // JS
+                $errors = self::getJSErrors($js);
+
+                foreach ($errors as $error) {
+                    $statement .= "* JS ".$error."  \n";
+                }
+
+                $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+
+                foreach ($errors as $error) {
+                    $statement .= "* ".$error."  \n";
+                }
+
+                if ($hasIssues) {
+                    $statement .= "  \n  \nPlease note, if you preprocess HTML or JS, the line and column numbers are for the processed code.  \n";
+                    $statement .= "Additionally, any added libraries will be omitted in the above check.  \n";
+                    $hasIssues = true;
+                }
+            } else {
+                $statement .= "Your fiddles at ";
+                foreach ($links as $link) {
+                    $statement .= $link." ";
+                }
+                $statement .= "are greatly appreciated!  \n";
+                $i = 1;
+
+                $statement .= "If there are any issues below, please fix them:  \n";
+
+                foreach ($links as $link) {
+                    $page = file_get_contents($link);
+
+                    if ($page === false) {
+                        $statement .= "* The fiddle does not exist or could not be found  \n";
+                    }
+
+                    if (!preg_match("/materialize\.(min\.js|js)/", $page) ||
+                        !preg_match("/materialize\.(min\.css|css)/", $page)) {
+                        $statement .= "* The fiddle may not correctly include materialize  \n";
+                    }
+
+                    $dom = pQuery::parseStr($page);
+                    $html = htmlspecialchars_decode($dom->query("textarea#id_code_html")[0]->html());
+                    $js = htmlspecialchars_decode($dom->query("textarea#id_code_js")[0]->html());
+
+                    $errors = self::getHTMLBodyErrors($html);
+
+                    foreach ($errors as $error) {
+                        if (strlen($error) != 0) {
+                            $statement .= "* Fiddle [".$i."](".$link.") HTML ".$error."  \n";
+                        }
+                    }
+
+                    $errors = self::getJSErrors($js);
+
+                    foreach ($errors as $error) {
+                        $statement .= "* Fiddle [".$i."](".$link.") JS ".$error."  \n";
+                    }
+
+                    $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+
+                    foreach ($errors as $error) {
+                        $statement .= "* Fiddle [".$i."](".$link.") ".$error."  \n";
                     }
 
                     $i++;
@@ -253,6 +385,7 @@ class Bot {
         $statement .= self::getEmptyBody($issue, $hasIssues);
         $statement .= self::getUnfilledTemplate($issue, $hasIssues);
         $statement .= self::getCodepenStatement($issue, $hasIssues);
+        $statement .= self::getJSFiddleStatement($issue, $hasIssues);
 
         if ($hasIssues) {
             $statement .= "Please fix the above issues and re-write your example so we at Materialize can verify it’s a problem with the library and not with your code, and further proceed fixing your issue.  \n";
