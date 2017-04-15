@@ -5,3 +5,5 @@ config.json
 
 tmp.js
 tmp.md
+
+logs/bot.log
