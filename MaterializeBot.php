@@ -7,14 +7,14 @@ if (DEBUG) {
 }
 
 // load libraries
-require_once("vendor/autoload.php");
+require_once 'vendor/autoload.php';
 use \Github\Client;
 
 if(!is_file("config.json")) {
     die("You have not created a config.json file yet.\n");
 }
 
-require_once("config.php");
+require_once 'config.php';
 
 class Bot {
     protected const TIDY_CONFIG = Array();
