@@ -110,8 +110,8 @@ class Bot {
                 $html = file_get_contents($link.".html");
                 $js = file_get_contents($link.".js");
 
-                if (!preg_match("/materialize\.(min\.js|js)/", $page) ||
-                    !preg_match("/materialize\.(min\.css|css)/", $page)) {
+                if (!preg_match("/materialize\.(min\.)?js)/", $page) ||
+                    !preg_match("/materialize\.(min\.)?css/", $page)) {
                     $statement .= "* The codepen may not correctly include materialize  \n";
                 }
 
@@ -160,8 +160,9 @@ class Bot {
                     $html = file_get_contents($link.".html");
                     $js = file_get_contents($link.".js");
 
-                    if (!preg_match("/materialize\.(min\.js|js)/", $page) ||
-                        !preg_match("/materialize\.(min\.css|css)/", $page)) {
+                    if (!preg_match("/materialize\.(min\.)?js/", $page) ||
+                        !preg_match("/materialize\.(min\.)?css/", $page)) {
+                    //TODO Magic ^^^ materialize regex should be constants
                         $statement .= "* The codepen may not correctly include materialize  \n";
                     }
 
@@ -219,8 +220,9 @@ class Bot {
                 $html = htmlspecialchars_decode($dom->query("textarea#id_code_html")[0]->html());
                 $js = htmlspecialchars_decode($dom->query("textarea#id_code_js")[0]->html());
 
-                if (!preg_match("/materialize\.(min\.js|js)/", $page) ||
-                    !preg_match("/materialize\.(min\.css|css)/", $page)) {
+                if (!preg_match("/materialize\.(min\.)?js/", $page) ||
+                    !preg_match("/materialize\.(min\.)?css/", $page)) {
+                    //TODO Magic ^^^ materialize regex should be constants
                     $statement .= "* The fiddle may not correctly include materialize  \n";
                 }
 
@@ -267,8 +269,8 @@ class Bot {
                         $statement .= "* The fiddle does not exist or could not be found  \n";
                     }
 
-                    if (!preg_match("/materialize\.(min\.js|js)/", $page) ||
-                        !preg_match("/materialize\.(min\.css|css)/", $page)) {
+                    if (!preg_match("/materialize\.(min\.)?js/", $page) ||
+                        !preg_match("/materialize\.(min\.)?css/", $page)) {
                         $statement .= "* The fiddle may not correctly include materialize  \n";
                     }
 
