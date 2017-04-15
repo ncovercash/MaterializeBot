@@ -47,7 +47,7 @@ class Bot {
 
         echo "Bot started...running as of issue ".$this->highestAnalyzedIssueNumber."\n";
 
-        $this->highestAnalyzedIssueNumber = 37;
+        $this->highestAnalyzedIssueNumber = 38;
 
         $this->run();
     }
@@ -310,6 +310,63 @@ class Bot {
         return $statement."  \n";
     }
 
+    public static function getMarkdownStatement(array $issue, bool &$hasIssues) : string {
+        $issue["body"] .= "\n"; // regex issue
+        $numCodeBlocks = preg_match_all("/```/", $issue["body"]);
+        if ($numCodeBlocks > 0) {
+            $statement = "";
+            $statement .= "Your markdown code block(s) are greatly appreciated!  \n";
+            $statement .= "If there are any issues below, please fix them:  \n";
+
+            if (preg_match_all("/```(\s+|\n)/", $issue["body"])*2 > $numCodeBlocks) {
+                $statement .= "One or more markdown codeblocks do not have language descriptors, and cannot be parsed by this bot.  \nPlease add them per the [GFM guide](https://guides.github.com/features/mastering-markdown/)  \n";
+            }
+
+            file_put_contents("tmp.md", $issue["body"]."\n");
+
+            exec("/usr/local/bin/codedown html < tmp.md", $html);
+            $html = implode("\n", $html);
+
+            if (preg_match("/<body>/", $html)) {
+                $errors = self::getHTMLErrors($html);
+            } else {
+                $errors = self::getHTMLBodyErrors($html);
+            }
+
+            foreach ($errors as $error) {
+                if (strlen($error) != 0) {
+                    $statement .= "* HTML ".$error."  \n";
+                    $hasIssues = true;
+                }
+            }
+
+            exec("/usr/local/bin/codedown javascript < tmp.md", $js);
+            exec("/usr/local/bin/codedown js < tmp.md", $js);
+            $js = implode("\n", $js);
+
+            $errors = self::getJSErrors($js);
+            
+            foreach ($errors as $error) {
+                if (strlen($error) != 0) {
+                    $statement .= "* JS ".$error."  \n";
+                    $hasIssues = true;
+                }
+            }
+
+            $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+            
+            foreach ($errors as $error) {
+                if (strlen($error) != 0) {
+                    $statement .= "* ".$error."  \n";
+                    $hasIssues = true;
+                }
+            }
+
+            return $statement."  \n";
+        }
+        return "";
+    }
+
     public static function getJSErrors(string $in) : array {
         $js_header = file_get_contents(self::JS_HEADER_LOC);
         file_put_contents("tmp.js", $js_header.$in);
@@ -386,12 +443,13 @@ class Bot {
         $statement .= self::getUnfilledTemplate($issue, $hasIssues);
         $statement .= self::getCodepenStatement($issue, $hasIssues);
         $statement .= self::getJSFiddleStatement($issue, $hasIssues);
+        $statement .= self::getMarkdownStatement($issue, $hasIssues);
 
         if ($hasIssues) {
             $statement .= "Please fix the above issues and re-write your example so we at Materialize can verify it’s a problem with the library and not with your code, and further proceed fixing your issue.  \n";
+            $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@MaterializeBot reanalyze`.  \n";
         }
 
-        $statement .= "Thanks!  \n";
         $statement .= "  \n";
         $statement .= "_I'm a bot, bleep, bloop. If there was an error, please let us know._  \n";
 
