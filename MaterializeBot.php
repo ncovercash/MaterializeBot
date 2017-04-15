@@ -17,10 +17,13 @@ if(!is_file("config.json")) {
 require_once("config.php");
 
 class Bot {
-    private const TIDY_CONFIG = Array();
-    private const JSHINT_HEADER_LENGTH = 15;
-    private const JS_HEADER_LOC = "jshint_header.js";
-    private const SPECIFIC_PAIR_CHECKS = Array(
+    protected const TIDY_CONFIG = Array();
+    protected const REQUIRED_JS_FILE = "/materialize\.(min\.)?js)/";
+    protected const REQUIRED_CSS_FILE = "/materialize\.(min\.)?css/";
+    public const PROJECT_NAME = "materialize";
+    protected const JSHINT_HEADER_LENGTH = 15;
+    protected const JS_HEADER_LOC = "jshint_header.js";
+    protected const SPECIFIC_PAIR_CHECKS = Array(
         "chips" => ".material_chip(",
         "carousel" => ".carousel(",
         "tap-target" => ".tapTarget(",
@@ -30,6 +33,7 @@ class Bot {
         );
     protected $client;
     public $repository;
+    public $username;
     protected $openIssues, $closedIssues;
 
     protected $highestAnalyzedIssueNumber=0;
@@ -55,6 +59,7 @@ class Bot {
     protected function login() {
         // login
         $authentication = json_decode(file_get_contents("config.json"), true);
+        $this->username = $authentication["username"];
         $this->client->authenticate($authentication["username"], $authentication["password"], Client::AUTH_HTTP_PASSWORD);
     }
 
@@ -110,9 +115,9 @@ class Bot {
                 $html = file_get_contents($link.".html");
                 $js = file_get_contents($link.".js");
 
-                if (!preg_match("/materialize\.(min\.)?js)/", $page) ||
-                    !preg_match("/materialize\.(min\.)?css/", $page)) {
-                    $statement .= "* The codepen may not correctly include materialize  \n";
+                if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
+                    !preg_match(self::REQUIRED_CSS_FILE, $page)) {
+                    $statement .= "* The codepen may not correctly include ".self::PROJECT_NAME."  \n";
                 }
 
                 $errors = self::getHTMLBodyErrors($html);
@@ -160,10 +165,9 @@ class Bot {
                     $html = file_get_contents($link.".html");
                     $js = file_get_contents($link.".js");
 
-                    if (!preg_match("/materialize\.(min\.)?js/", $page) ||
-                        !preg_match("/materialize\.(min\.)?css/", $page)) {
-                    //TODO Magic ^^^ materialize regex should be constants
-                        $statement .= "* The codepen may not correctly include materialize  \n";
+                    if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
+                        !preg_match(self::REQUIRED_CSS_FILE, $page)) {
+                        $statement .= "* The codepen may not correctly include ".self::PROJECT_NAME."  \n";
                     }
 
                     $errors = self::getHTMLBodyErrors($html);
@@ -220,10 +224,9 @@ class Bot {
                 $html = htmlspecialchars_decode($dom->query("textarea#id_code_html")[0]->html());
                 $js = htmlspecialchars_decode($dom->query("textarea#id_code_js")[0]->html());
 
-                if (!preg_match("/materialize\.(min\.)?js/", $page) ||
-                    !preg_match("/materialize\.(min\.)?css/", $page)) {
-                    //TODO Magic ^^^ materialize regex should be constants
-                    $statement .= "* The fiddle may not correctly include materialize  \n";
+                if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
+                    !preg_match(self::REQUIRED_CSS_FILE, $page)) {
+                    $statement .= "* The fiddle may not correctly include ".self::PROJECT_NAME."  \n";
                 }
 
                 $errors = self::getHTMLBodyErrors($html);
@@ -269,9 +272,9 @@ class Bot {
                         $statement .= "* The fiddle does not exist or could not be found  \n";
                     }
 
-                    if (!preg_match("/materialize\.(min\.)?js/", $page) ||
-                        !preg_match("/materialize\.(min\.)?css/", $page)) {
-                        $statement .= "* The fiddle may not correctly include materialize  \n";
+                    if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
+                        !preg_match(self::REQUIRED_CSS_FILE, $page)) {
+                        $statement .= "* The fiddle may not correctly include ".self::PROJECT_NAME."  \n";
                     }
 
                     $dom = pQuery::parseStr($page);
@@ -448,8 +451,8 @@ class Bot {
         $statement .= self::getMarkdownStatement($issue, $hasIssues);
 
         if ($hasIssues) {
-            $statement .= "Please fix the above issues and re-write your example so we at Materialize can verify it’s a problem with the library and not with your code, and further proceed fixing your issue.  \n";
-            $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@MaterializeBot reanalyze`.  \n";
+            $statement .= "Please fix the above issues and re-write your example so we at ".self::PROJECT_NAME." can verify it’s a problem with the library and not with your code, and further proceed fixing your issue.  \n";
+            $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@".$this->username." reanalyze`.  \n";
         }
 
         $statement .= "  \n";

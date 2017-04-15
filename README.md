@@ -14,4 +14,8 @@ If you want to use this on a different project, here are the things you need to 
 * MaterializeBot.php Bot::jshint_header_length - length of the jshint header
 * MaterializeBot.php Bot::specific_pair_checks - checks errors specific to materialize, uses an array where if a key exists the value must too
 * MaterializeBot.php Bot::getUnfilledTemplate - checks errors specific to the issue template
-* MaterializeBot.php Bot->analyzeIssue - prints text around errors
+* MaterializeBot.php Bot::REQUIRED_CSS_FILE - file to check is implemented correctly in codepen/jsfiddle/etc.
+* MaterializeBot.php Bot::REQUIRED_JS_FILE - file to check is implemented correctly in codepen/jsfiddle/etc.
+* MaterializeBot.php Bot::PROJECT_NAME - name of project
+
+Any other blocks of text are generic, and can be found with a simple find command.
