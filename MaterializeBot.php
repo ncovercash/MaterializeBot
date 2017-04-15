@@ -99,7 +99,7 @@ class Bot {
         $statement = "";
         if (preg_match_all("/http(s|)\:\/\/(www\.|)codepen\.io\/[a-zA-Z0-9\-]+\/(pen|details|full|pres)\/[a-zA-Z0-9]+/", $issue["body"], $codepens) && !preg_match("/xbzPQV/", $issue["body"])) {
             $links = $codepens[0];
-            if (count($links) == 1) {
+            if (count($links) === 1) {
                 $link = $links[0];
 
                 $statement .= "Your codepen at ".$link." is greatly appreciated!  \n";
@@ -207,7 +207,7 @@ class Bot {
         $statement = "";
         if (preg_match_all("/http(s|)\:\/\/(www\.|)jsfiddle\.net\/[a-zA-Z0-9\-]+\/[a-zA-Z0-9]+/", $issue["body"], $fiddles)) {
             $links = $fiddles[0];
-            if (count($links) == 1) {
+            if (count($links) === 1) {
                 $link = $links[0];
 
                 $statement .= "Your fiddle at ".$link." is greatly appreciated!  \n";
@@ -418,7 +418,7 @@ class Bot {
     }
 
     public static function getEmptyBody(array $issue, bool &$hasIssues) : string {
-        if (strlen($issue["body"]) == 0) {
+        if (strlen($issue["body"]) === 0) {
             $statement  = "Your issue body is empty.  \n";
             $statement .= "Please add more information in order to allow us to quickly categorize and resolve the issue.  \n  \n";
             $hasIssues = true;
