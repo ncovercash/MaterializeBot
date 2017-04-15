@@ -12,3 +12,5 @@ If you want to use this on a different project, here are the things you need to 
 * jshint_header.php - contains javascript files to be included (excluding jquery) and jshint parameters
 * MaterializeBot.php Bot::tidy_config - tidy configuration options
 * MaterializeBot.php Bot::jshint_header_length - length of the jshint header
+* MaterializeBot.php Bot::specific_pair_checks - checks errors specific to materialize, uses an array where if a key exists the value must too
+* MaterializeBot.php Bot::getUnfilledTemplate - checks errors specific to the issue template
