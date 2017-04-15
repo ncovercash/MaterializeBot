@@ -23,6 +23,7 @@ class Bot {
     public const PROJECT_NAME = "materialize";
     protected const JSHINT_HEADER_LENGTH = 15;
     protected const JS_HEADER_LOC = "jshint_header.js";
+    protected const SLEEP_TIME = 2; // seconds
     protected const SPECIFIC_PAIR_CHECKS = Array(
         "chips" => ".material_chip(",
         "carousel" => ".carousel(",
@@ -51,8 +52,6 @@ class Bot {
 
         echo "Bot started...running as of issue ".$this->highestAnalyzedIssueNumber."\n";
 
-        $this->highestAnalyzedIssueNumber = 38;
-
         $this->run();
     }
 
@@ -74,7 +73,7 @@ class Bot {
 
             $this->analyzeOpenIssues();
             
-            sleep(2);
+            sleep(self::SLEEP_TIME);
         }
     }
 
