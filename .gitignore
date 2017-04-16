@@ -3,7 +3,9 @@ composer.phar
 
 config.json
 
-tmp.js
-tmp.md
+tmp/tmp.js
+tmp/tmp.md
+tmp/tmp.png
+tmp/tmp.html
 
 logs/bot.log

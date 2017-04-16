@@ -2,6 +2,8 @@
     "require": {
         "knplabs/github-api": "*",
         "php-http/guzzle6-adapter": "*",
-        "tburry/pquery": "*"
+        "tburry/pquery": "*",
+        "facebook/webdriver": "*",
+        "j0k3r/php-imgur-api-client": "*"
     }
 }

@@ -2,14 +2,18 @@
 
 Bot for Dogfalo/materialize that helps validate issues and other general tasks.
 
-A `config.json` file is needed with keys `username` and `password` in order to run this bot.
+A `config.json` file is needed with keys `gh_username` - bot GH username, `gh_password` - bot GH password, `imgur_id` - imgur client ID, and `imgur_secret` - imgur client secret in order to run this bot.
 
-Additionally, the `jshint` and `codedown` NPM programs, and all composer requirements are needed to run this.
+The imgur api is used to upload images of the code given by the user once run.
+
+Additionally, the `jshint` and `codedown` NPM programs, selenium webdriver server on default ports, and all composer requirements are needed to run this.
 
 If you want to use this on a different project, here are the things you need to change:
 
 * config.php - contains repo information
-* jshint_header.php - contains javascript files to be included (excluding jquery) and jshint parameters
+* jshint_header.js - contains javascript files to be included (excluding jquery) and jshint parameters
+* html_header.html - contains the top of the html document for selenium tests
+* html_footer.html - contains the bottom of the html document for selenium tests
 * MaterializeBot.php Bot::tidy_config - tidy configuration options
 * MaterializeBot.php Bot::jshint_header_length - length of the jshint header
 * MaterializeBot.php Bot::specific_pair_checks - checks errors specific to materialize, uses an array where if a key exists the value must too
