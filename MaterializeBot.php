@@ -8,10 +8,6 @@ if (DEBUG) {
 
 // load libraries
 require_once "vendor/autoload.php";
-use GitElephant\Repository;
-use Github\Client;
-use Facebook\WebDriver\Remote\DesiredCapabilities;
-use Facebook\WebDriver\Remote\RemoteWebDriver;
 
 if(!is_file("config.json")) {
     die("You have not created a config.json file yet.\n");
@@ -24,8 +20,12 @@ class Bot {
     protected const REQUIRED_JS_FILE = "/materialize\.(min\.)?js/";
     protected const REQUIRED_CSS_FILE = "/materialize\.(min\.)?css/";
     public const PROJECT_NAME = "materialize";
+    protected const LABEL_SUFFIX = " (bot)";
     protected const JS_HEADER_LOC = "jshint_header.js";
     protected const SLEEP_TIME = 10; // seconds
+    // protected const SLEEP_TIME = 120; // seconds
+    protected const SLEEP_TIME_PRS = 100; // seconds
+    // protected const SLEEP_TIME_PRS = 600; // seconds
     protected const SPECIFIC_PAIR_CHECKS = Array(
         "chips" => ".material_chip(",
         "carousel" => ".carousel(",
@@ -34,35 +34,39 @@ class Bot {
         "scrollspy" => ".scrollSpy(",
         "side-nav" => ".sideNav("
         );
-    protected $githubClient, $seleniumDriver;
+    public $alive=true;
+    protected $githubClient, $githubPaginator, $seleniumDriver;
     public $repository;
     public $username;
     protected $openIssues, $closedIssues;
+    protected $openPRs, $closedPRs, $prNumbers;
     protected $imageRepo, $imageRepoPath, $imageRepoName;
     protected $js_header_length;
 
     protected $highestAnalyzedIssueNumber=0;
 
-    public function __construct($repository) {
+    public function __construct($repository, bool $scanPRs=false) {
         $this->js_header_length = count(file(self::JS_HEADER_LOC)) - 1;
 
         $this->repository = $repository;
 
-        $this->githubClient = new Client();
+        $this->githubClient = new \Github\Client();
         
         $this->loadConfig();
 
         $this->refreshIssues();
+        $this->updatePRs();
 
         $this->updateIssueCounter();
 
         echo "Bot started...running as of issue ".$this->highestAnalyzedIssueNumber."\n";
 
-        $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 2000);
-
-        $this->highestAnalyzedIssueNumber = 61;
-
-        $this->run();
+        if ($scanPRs) {
+            $this->runPRLabel();
+        } else {
+            $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 2000);
+            $this->run();
+        }
     }
 
     protected function uploadImage(string $file) : string {
@@ -78,23 +82,45 @@ class Bot {
     }
 
     protected function loadConfig() {
-        // login
         $config = json_decode(file_get_contents("config.json"), true);
-        $this->username = $config["gh_username"];
-        $this->githubClient->authenticate($config["gh_username"], $config["gh_password"], Client::AUTH_HTTP_PASSWORD);
 
-        $this->imageRepo = new Repository($config["image_repo_path"]);
+        $this->username = $config["gh_username"];
+        $this->githubClient->authenticate($config["gh_username"], $config["gh_password"], \Github\Client::AUTH_HTTP_PASSWORD);
+        $this->githubPaginator = new Github\ResultPager($this->githubClient);
+
+        $this->imageRepo = new \GitElephant\Repository($config["image_repo_path"]);
         $this->imageRepoName = $config["image_repo"];
         $this->imageRepoPath = $config["image_repo_path"];
     }
 
     protected function refreshIssues() {
-        $this->closedIssues = $this->githubClient->api("issue")->all($this->repository[0], $this->repository[1], Array("state" => "closed"));
-        $this->openIssues = $this->githubClient->api("issue")->all($this->repository[0], $this->repository[1], Array("state" => "open"));
+        $this->closedIssues = $this->githubPaginator->fetchAll($this->githubClient->api("issue"), "all", Array($this->repository[0], $this->repository[1], Array("state" => "closed")));
+        $this->openIssues = $this->githubPaginator->fetchAll($this->githubClient->api("issue"), "all", Array($this->repository[0], $this->repository[1], Array("state" => "open")));
+
+        $this->openIssues = array_filter($this->openIssues, function(array $issue) {
+            return !isset($issue["pull_request"]);
+        });
+        $this->closedIssues = array_filter($this->closedIssues, function(array $issue) {
+            return !isset($issue["pull_request"]);
+        });
     }
 
-    protected function run() {
-        while (true) {
+    protected function updatePRs() {
+        $this->closedPRs = $this->githubPaginator->fetchAll($this->githubClient->api("pull_request"), "all", Array($this->repository[0], $this->repository[1], Array("state" => "closed")));
+        $this->openPRs = $this->githubPaginator->fetchAll($this->githubClient->api("pull_request"), "all", Array($this->repository[0], $this->repository[1], Array("state" => "open")));
+
+        $this->prNumbers = Array();
+
+        foreach ($this->closedPRs as $pr) {
+            $this->prNumbers[] = "#".$pr["number"];
+        }
+        foreach ($this->openPRs as $pr) {
+            $this->prNumbers[] = "#".$pr["number"];
+        }
+    }
+
+    public function run() {
+        while ($this->alive) {
             $this->refreshIssues();
 
             $this->analyzeOpenIssues();
@@ -102,6 +128,18 @@ class Bot {
             $this->removeOldImages();
             
             sleep(self::SLEEP_TIME);
+        }
+    }
+
+    public function runPRLabel() {
+        while ($this->alive) {
+            $this->refreshIssues();
+
+            $this->updatePRs();
+
+            $this->updateOpenPRLabels();
+            
+            sleep(self::SLEEP_TIME_PRS);
         }
     }
 
@@ -140,6 +178,10 @@ class Bot {
 
         $html .= file_get_contents("html_footer.html");
 
+        return $this->getSeleniumErrorsFromHTMLJSandCSS($html, $js, $css);
+    }
+
+    public function getSeleniumErrorsFromHTMLJSandCSS(string $html, string $js, string $css) : array {
         $html .= "<script>".$js."</script>";
 
         $html .= "<style>".$css."</style>";
@@ -231,7 +273,7 @@ class Bot {
                     $hasIssues = true;
 
                     $this->seleniumDriver->quit();
-                    $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 5000);
+                    $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 5000);
                 }
 
                 if ($hasIssues) {
@@ -297,7 +339,7 @@ class Bot {
                         $hasIssues = true;
 
                         $this->seleniumDriver->quit();
-                        $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 5000);
+                        $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 5000);
                     }
 
                     $i++;
@@ -374,7 +416,7 @@ class Bot {
                     $hasIssues = true;
 
                     $this->seleniumDriver->quit();
-                    $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 2000);
+                    $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 2000);
                 }
 
                 if ($hasIssues) {
@@ -442,7 +484,7 @@ class Bot {
                         $hasIssues = true;
 
                         $this->seleniumDriver->quit();
-                        $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 5000);
+                        $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 5000);
                     }
 
                     $i++;
@@ -509,6 +551,29 @@ class Bot {
                     $statement .= "* ".$error."  \n";
                     $hasIssues = true;
                 }
+            }
+
+            exec("/usr/local/bin/codedown css < tmp/tmp.md", $css);
+            $css = implode("\n", $css);
+
+            try {
+                // Console
+                if (preg_match("/<body>/", $html)) {
+                    $seleniumErrors = $this->getSeleniumErrorsFromHTMLJSandCSS($html, $js, $css);
+                } else {
+                    $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                }
+                $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues);
+
+                // Image
+                $image = $this->getSeleniumImage();
+                $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+            } catch (Exception $e) {
+                $statement .= "* Unable to render content with selenium: ".$e->getResults()["state"].".  \n";
+                $hasIssues = true;
+
+                $this->seleniumDriver->quit();
+                $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 2000);
             }
 
             return $statement."  \n";
@@ -582,6 +647,682 @@ class Bot {
         return "";
     }
 
+    public function getSimilarIssues(array $issue) : string {
+        if (preg_match("/select/", $issue["title"])) {
+            $statement  = "Similar issues related to `select`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/select/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/select/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/input/", $issue["title"])) {
+            $statement  = "Similar issues related to `input`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/input/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/input/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/modal/", $issue["title"])) {
+            $statement  = "Similar issues related to `modal`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/modal/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/modal/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/button/", $issue["title"])) {
+            $statement  = "Similar issues related to `button`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/button/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/button/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/dropdown/", $issue["title"])) {
+            $statement  = "Similar issues related to `dropdown`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/dropdown/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/dropdown/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/navbar/", $issue["title"])) {
+            $statement  = "Similar issues related to `navbar`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/navbar/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/navbar/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/page/", $issue["title"])) {
+            $statement  = "Similar issues related to `page`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/page/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/page/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/tabs/", $issue["title"])) {
+            $statement  = "Similar issues related to `tabs`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/tabs/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/tabs/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/icon/", $issue["title"])) {
+            $statement  = "Similar issues related to `icon`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/icon/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/icon/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/after/", $issue["title"])) {
+            $statement  = "Similar issues related to `after`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/after/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/after/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/sidenav/", $issue["title"])) {
+            $statement  = "Similar issues related to `sidenav`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/sidenav/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/sidenav/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/side\-nav/", $issue["title"])) {
+            $statement  = "Similar issues related to `side\-nav`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/side\-nav/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/side\-nav/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+        } else if (preg_match("/menu/", $issue["title"])) {
+            $statement  = "Similar issues related to `menu`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/menu/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/menu/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/meteor/", $issue["title"])) {
+            $statement  = "Similar issues related to `meteor`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/meteor/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/meteor/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/form/", $issue["title"])) {
+            $statement  = "Similar issues related to `form`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/form/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/form/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/color/", $issue["title"])) {
+            $statement  = "Similar issues related to `color`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/color/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/color/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/card/", $issue["title"])) {
+            $statement  = "Similar issues related to `card`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/card/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/card/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/collapsible/", $issue["title"])) {
+            $statement  = "Similar issues related to `collapsible`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/collapsible/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/collapsible/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/image/", $issue["title"])) {
+            $statement  = "Similar issues related to `image`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/image/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/image/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/nav/", $issue["title"])) {
+            $statement  = "Similar issues related to `nav`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/nav/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/nav/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/slider/", $issue["title"])) {
+            $statement  = "Similar issues related to `slider`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/slider/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/slider/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/datepicker/", $issue["title"])) {
+            $statement  = "Similar issues related to `datepicker`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/datepicker/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/datepicker/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/carousel/", $issue["title"])) {
+            $statement  = "Similar issues related to `carousel`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/carousel/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/carousel/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/parallax/", $issue["title"])) {
+            $statement  = "Similar issues related to `parallax`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/parallax/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/parallax/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/grid/", $issue["title"])) {
+            $statement  = "Similar issues related to `grid`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/grid/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/grid/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/font/", $issue["title"])) {
+            $statement  = "Similar issues related to `font`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/font/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/font/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/table/", $issue["title"])) {
+            $statement  = "Similar issues related to `table`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/table/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/table/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/fab/", $issue["title"])) {
+            $statement  = "Similar issues related to `fab`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/fab/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/fab/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/checkbox/", $issue["title"])) {
+            $statement  = "Similar issues related to `checkbox`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/checkbox/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/checkbox/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/container/", $issue["title"])) {
+            $statement  = "Similar issues related to `container`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/container/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/container/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/overlay/", $issue["title"])) {
+            $statement  = "Similar issues related to `overlay`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/overlay/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/overlay/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/footer/", $issue["title"])) {
+            $statement  = "Similar issues related to `footer`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/footer/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/footer/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else if (preg_match("/waves/", $issue["title"])) {
+            $statement  = "Similar issues related to `waves`:  \n";
+            $similar = 0;
+            foreach ($this->closedIssues as $tmpIssue) {
+                if (preg_match("/waves/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            foreach ($this->openIssues as $tmpIssue) {
+                if (preg_match("/waves/", $tmpIssue["title"]) && $similar < 15) {
+                    if ($tmpIssue["number"] != $issue["number"]) {
+                        $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                        $similar++;
+                    }
+                }
+            }
+            return $statement;
+        } else {
+            return "No similar issues were found.  Please check that your issue has not yet been resolved elsewhere.  \n\n";
+        }
+    }
+
+    public function getFeatureLabel(array $issue) : string {
+        $text = $issue["title"].$issue["body"];
+        $text = strtolower($text);
+
+        if (preg_match("/new feature/", $text) || preg_match("/feature request/", $text)) {
+            $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "enhancement".self::LABEL_SUFFIX);
+            return "I have detected a feature request.  If this is wrong, please remove the `enhancement ".self::LABEL_SUFFIX."` label.  \n\n";
+        }
+        return "";
+    }
+
     protected function analyzeIssue(array $issue) {
         $start = microtime(true);
 
@@ -597,10 +1338,25 @@ class Bot {
         $statement .= $this->getMarkdownStatement($issue, $hasIssues);
 
         if ($hasIssues) {
+            $statement .= "If the screenshot or log is extremely different from your version, it may be due to a missing dependency (jquery?) on either side.  \n";
+            $statement .= "  \n";
             $statement .= "Please fix the above issues and re-write your example so we at ".self::PROJECT_NAME." can verify it’s a problem with the library and not with your code, and further proceed fixing your issue.  \n";
-            $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@".$this->username." reanalyze`.  \n";
+            $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@".$this->username." reanalyze`.  (It may take up to an hour for this to happen.)  \n";
+
+            $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
+        } else {
+            foreach ($issue["labels"] as $label) {
+                if ($label["name"] == "awaiting reply".self::LABEL_SUFFIX) {
+                    $this->githubClient->api("issue")->labels()->remove($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
+                    return;
+                }
+            }
         }
 
+        $statement .= $this->getFeatureLabel($issue);
+        
+        $statement .= $this->getSimilarIssues($issue);
+        
         $statement .= "  \n";
         $statement .= "_I'm a bot, bleep, bloop. If there was an error, please let us know._  \n";
 
@@ -612,6 +1368,71 @@ class Bot {
         echo "Issue ".$issue["number"]." has been analyzed and commented on in ".(microtime(true)-$start)."s.\n";
 
         $this->imageRepo->push();
+    }
+
+    protected function updatePRLabel(array $issue) {
+        $comments = $this->githubPaginator->fetchAll($this->githubClient->api("issue")->comments(), "all", Array($this->repository[0], $this->repository[1], $issue["number"]));
+
+        foreach ($comments as $comment) {
+            $lowercaseComment = strtolower($comment["body"]);
+
+            // creator has asked us to ignore the PR
+            if (preg_match("/@".strtolower($this->username)." ignore\-pr/", $lowercaseComment) && $issue["user"]["login"] == $comment["user"]["login"]) {
+                foreach ($issue["labels"] as $label) {
+                    if ($label["name"] == "has-pr".self::LABEL_SUFFIX) {
+                        $this->githubClient->api("issue")->labels()->remove($this->repository[0], $this->repository[1], $issue["number"], "has-pr".self::LABEL_SUFFIX);
+                        return;
+                    }
+                }
+                return;
+            }
+        }
+
+        foreach ($issue["labels"] as $label) {
+            if ($label["name"] == "has-pr".self::LABEL_SUFFIX || $label["name"] == "has-pr") {
+                // skip
+                return;
+            }
+        }
+
+        foreach ($comments as $comment) {
+            preg_match_all("/#\d+/", $comment["body"], $issueAndPRs);
+
+            $issueAndPRs = $issueAndPRs[0];
+
+            foreach ($issueAndPRs as $value) {
+                if (in_array($value, $this->prNumbers)) {
+                    $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "has-pr".self::LABEL_SUFFIX);
+
+                    $statement  = "Hi,  \n";
+                    $statement .= "I auto-detected a PR commented on your issue: ".$value.".  \n";
+                    $statement .= "As a result, I've added a `has-pr".self::LABEL_SUFFIX."` label to your issue.  \n";
+                    $statement .= "  \n";
+                    $statement .= "If this was in error, the issue creator can comment `@".$this->username." ignore-pr` and I will remove it on my next cycle.  \n";
+                    $statement .= "  \n";
+                    $statement .= "_I'm a bot, bleep, bloop. If there was an error, please let us know._  \n";
+
+                    $this->githubClient->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => htmlspecialchars($statement)));
+                    return;
+                }
+            }
+        }
+    }
+
+    protected function updateAllPRLabels() {
+        foreach ($this->openIssues as $issue) {
+            $this->updatePRLabel($issue);
+        }
+        foreach ($this->openIssues as $issue) {
+            $this->updatePRLabel($issue);
+        }
+    }
+
+    protected function updateOpenPRLabels() {
+        foreach ($this->openIssues as $issue) {
+            echo "Checking PR on ".$issue["number"]."\n";
+            $this->updatePRLabel($issue);
+        }
     }
 
     protected function analyzeOpenIssues() {
@@ -632,11 +1453,18 @@ class Bot {
 
     protected function reviewAllIssues() {
         $this->highestAnalyzedIssueNumber = 0;
+        $this->updatePRs();
+        $this->updateAllPRLabels();
         $this->analyzeOpenIssues();
     }
 
-    public function __destroy() {
+    public function __destruct() {
         $this->seleniumDriver->quit();
+    }
+
+    public function kill() {
+        $this->seleniumDriver->quit();
+        $this->alive = false;
     }
 
     protected function removeOldImages() {
@@ -668,4 +1496,8 @@ class Bot {
     }
 }
 
-$bot = new Bot($repository);
+if (isset($argv[1]) && $argv[1] == "pr") {
+    new Bot($repository, true);
+} else {
+    new Bot($repository);
+}
