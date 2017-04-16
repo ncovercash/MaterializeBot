@@ -7,7 +7,9 @@ if (DEBUG) {
 }
 
 // load libraries
-require_once 'vendor/autoload.php';
+require_once "vendor/autoload.php";
+use GitElephant\Repository;
+use Github\Client;
 use Facebook\WebDriver\Remote\DesiredCapabilities;
 use Facebook\WebDriver\Remote\RemoteWebDriver;
 
@@ -15,7 +17,7 @@ if(!is_file("config.json")) {
     die("You have not created a config.json file yet.\n");
 }
 
-require_once 'config.php';
+require_once "config.php";
 
 class Bot {
     protected const TIDY_CONFIG = Array();
@@ -33,26 +35,20 @@ class Bot {
         "scrollspy" => ".scrollSpy(",
         "side-nav" => ".sideNav("
         );
-    protected $githubClient, $imgurClient, $seleniumDriver;
+    protected $githubClient, $seleniumDriver;
     public $repository;
     public $username;
     protected $openIssues, $closedIssues;
+    protected $imageRepo, $imageRepoPath, $imageRepoName;
 
     protected $highestAnalyzedIssueNumber=0;
 
     public function __construct($repository) {
-        // ensure that the selenium instance is quit
-        register_shutdown_function("\$this->destroy");
-
         $this->repository = $repository;
 
-        $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 5000);
-
-        $this->githubClient = new \Github\Client();
+        $this->githubClient = new Client();
         
-        $this->imgurClient = new \Imgur\Client();
-
-        $this->login();
+        $this->loadConfig();
 
         $this->refreshIssues();
 
@@ -60,25 +56,33 @@ class Bot {
 
         echo "Bot started...running as of issue ".$this->highestAnalyzedIssueNumber."\n";
 
-        $this->highestAnalyzedIssueNumber = 40;
+        $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 2000);
 
         $this->run();
     }
 
     protected function uploadImage(string $file) : string {
-        $image = Array("type" => "base64", "image" => base64_encode(file_get_contents($file)));
-
-        return $this->imgurClient->api("image")->upload($image)["link"];
+        $fname = time().basename($file);
+        $newname = $this->imageRepoPath.$fname;
+        if (rename($file, $newname)) {
+            $this->imageRepo->stage();
+            $this->imageRepo->commit(time(), true);
+            $this->imageRepo->push();
+            return "https://github.com/".$this->imageRepoName."/blob/master/".$fname;
+        } else {
+            return "error";
+        }
     }
 
-    protected function login() {
+    protected function loadConfig() {
         // login
-        $authentication = json_decode(file_get_contents("config.json"), true);
-        $this->username = $authentication["gh_username"];
-        $this->githubClient->authenticate($authentication["gh_username"], $authentication["gh_password"], \Github\Client::AUTH_HTTP_PASSWORD);
+        $config = json_decode(file_get_contents("config.json"), true);
+        $this->username = $config["gh_username"];
+        $this->githubClient->authenticate($config["gh_username"], $config["gh_password"], Client::AUTH_HTTP_PASSWORD);
 
-        $this->imgurClient->setOption('client_id', $authentication["imgur_id"]);
-        $this->imgurClient->setOption('client_secret', $authentication["imgur_secret"]);
+        $this->imageRepo = new Repository($config["image_repo_path"]);
+        $this->imageRepoName = $config["image_repo"];
+        $this->imageRepoPath = $config["image_repo_path"];
     }
 
     protected function refreshIssues() {
@@ -91,6 +95,8 @@ class Bot {
             $this->refreshIssues();
 
             $this->analyzeOpenIssues();
+
+            $this->removeOldImages();
             
             sleep(self::SLEEP_TIME);
         }
@@ -121,10 +127,10 @@ class Bot {
 
         $this->seleniumDriver->get($path);
 
-        return $this->seleniumDriver->manage()->getLog('browser');
+        return $this->seleniumDriver->manage()->getLog("browser");
     }
 
-    public function getSeleniumErrorsFromBodyAndJS(string $body, string $js) : array {
+    public function getSeleniumErrorsFromBodyJSandCSS(string $body, string $js, string $css) : array {
         $html = file_get_contents("html_header.html");
 
         $html .= $body;
@@ -132,6 +138,8 @@ class Bot {
         $html .= file_get_contents("html_footer.html");
 
         $html .= "<script>".$js."</script>";
+
+        $html .= "<style>".$css."</style>";
 
         return $this->getSeleniumErrors($html);
     }
@@ -154,28 +162,10 @@ class Bot {
         return $statement;
     }
 
-    public function getSeleniumImage(string $html) : string {
-        file_put_contents("tmp/tmp.html", $html);
-
-        $path = "file://".__DIR__."/tmp/tmp.html";
-
-        $this->seleniumDriver->get($path);
-
+    public function getSeleniumImage() : string {
         $this->seleniumDriver->takeScreenshot("tmp/tmp.png");
 
         return $this->uploadImage("tmp/tmp.png");
-    }
-
-    public function getSeleniumImageFromBodyAndJS(string $body, string $js) : string {
-        $html = file_get_contents("html_header.html");
-
-        $html .= $body;
-
-        $html .= file_get_contents("html_footer.html");
-
-        $html .= "<script>".$js."</script>";
-
-        return $this->getSeleniumImage($html);
     }
 
     public function getCodepenStatement(array $issue, bool &$hasIssues) : string {
@@ -196,6 +186,7 @@ class Bot {
 
                 $html = file_get_contents($link.".html");
                 $js = file_get_contents($link.".js");
+                $css = file_get_contents($link.".css");
 
                 if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
                     !preg_match(self::REQUIRED_CSS_FILE, $page)) {
@@ -224,13 +215,21 @@ class Bot {
                     $statement .= "* ".$error."  \n";
                 }
 
-                // Console
-                $seleniumErrors = $this->getSeleniumErrorsFromBodyAndJS($html, $js);
-                $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues);
+                try {
+                    // Console
+                    $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                    $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues);
+    
+                    // Image
+                    $image = $this->getSeleniumImage();
+                    $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                } catch (Exception $e) {
+                    $statement .= "* Unable to render content with selenium: ".$e->getResults()["state"].".  \n";
+                    $hasIssues = true;
 
-                // Image
-                $image = $this->getSeleniumImageFromBodyAndJS($html, $js);
-                $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                    $this->seleniumDriver->quit();
+                    $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 5000);
+                }
 
                 if ($hasIssues) {
                     $statement .= "  \n  \nPlease note, if you preprocess HTML or JS, the line and column numbers are for the processed code.  \n";
@@ -255,6 +254,7 @@ class Bot {
                     }
                     $html = file_get_contents($link.".html");
                     $js = file_get_contents($link.".js");
+                    $css = file_get_contents($link.".css");
 
                     if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
                         !preg_match(self::REQUIRED_CSS_FILE, $page)) {
@@ -279,6 +279,22 @@ class Bot {
 
                     foreach ($errors as $error) {
                         $statement .= "* Codepen [".$i."](".$link.") ".$error."  \n";
+                    }
+
+                    try {
+                        // Console
+                        $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                        $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues, "Codepen [".$i."](".$link.") ");
+        
+                        // Image
+                        $image = $this->getSeleniumImage();
+                        $statement .= "  \n  \nCodepen [".$i."](".$link.") image rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                    } catch (Exception $e) {
+                        $statement .= "* Codepen [".$i."](".$link.") Unable to render content with selenium: ".$e->getResults()["state"].".  \n";
+                        $hasIssues = true;
+
+                        $this->seleniumDriver->quit();
+                        $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 5000);
                     }
 
                     $i++;
@@ -314,6 +330,7 @@ class Bot {
                 $dom = pQuery::parseStr($page);
                 $html = htmlspecialchars_decode($dom->query("textarea#id_code_html")[0]->html());
                 $js = htmlspecialchars_decode($dom->query("textarea#id_code_js")[0]->html());
+                $css = htmlspecialchars_decode($dom->query("textarea#id_code_css")[0]->html());
 
                 if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
                     !preg_match(self::REQUIRED_CSS_FILE, $page)) {
@@ -339,6 +356,22 @@ class Bot {
 
                 foreach ($errors as $error) {
                     $statement .= "* ".$error."  \n";
+                }
+
+                try {
+                    // Console
+                    $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                    $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues);
+    
+                    // Image
+                    $image = $this->getSeleniumImage();
+                    $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                } catch (Exception $e) {
+                    $statement .= "* Unable to render content with selenium: ".$e->getResults()["state"].".  \n";
+                    $hasIssues = true;
+
+                    $this->seleniumDriver->quit();
+                    $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 2000);
                 }
 
                 if ($hasIssues) {
@@ -371,6 +404,7 @@ class Bot {
                     $dom = pQuery::parseStr($page);
                     $html = htmlspecialchars_decode($dom->query("textarea#id_code_html")[0]->html());
                     $js = htmlspecialchars_decode($dom->query("textarea#id_code_js")[0]->html());
+                    $css = htmlspecialchars_decode($dom->query("textarea#id_code_css")[0]->html());
 
                     $errors = self::getHTMLBodyErrors($html);
 
@@ -390,6 +424,22 @@ class Bot {
 
                     foreach ($errors as $error) {
                         $statement .= "* Fiddle [".$i."](".$link.") ".$error."  \n";
+                    }
+
+                    try {
+                        // Console
+                        $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                        $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues, "Fiddle [".$i."](".$link.") ");
+        
+                        // Image
+                        $image = $this->getSeleniumImage();
+                        $statement .= "  \n  \nFiddle [".$i."](".$link.") image rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                    } catch (Exception $e) {
+                        $statement .= "* Fiddle [".$i."](".$link.") Unable to render content with selenium: ".$e->getResults()["state"].".  \n";
+                        $hasIssues = true;
+
+                        $this->seleniumDriver->quit();
+                        $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 5000);
                     }
 
                     $i++;
@@ -477,7 +527,7 @@ class Bot {
 
         foreach ($errors as $error) {
             $error = preg_replace("/tmp\/tmp.js\: /", "", $error);
-            preg_match('/\d+/', $error, $matches); 
+            preg_match("/\d+/", $error, $matches); 
             $line = $matches[0];
             $line -= self::JSHINT_HEADER_LENGTH;
             $error = preg_replace("/\d+/", $line, $error, 1);
@@ -530,6 +580,8 @@ class Bot {
     }
 
     protected function analyzeIssue(array $issue) {
+        $start = microtime(true);
+
         $hasIssues = false;
 
         $statement  = "@".$issue["user"]["login"].",  \n";
@@ -551,7 +603,7 @@ class Bot {
 
         $this->githubClient->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => htmlspecialchars($statement)));
 
-        echo "Issue ".$issue["number"]." has been analyzed and commented on.\n";
+        echo "Issue ".$issue["number"]." has been analyzed and commented on in ".(microtime(true)-$start)."s.\n";
     }
 
     protected function analyzeOpenIssues() {
@@ -577,6 +629,34 @@ class Bot {
 
     public function __destroy() {
         $this->seleniumDriver->quit();
+    }
+
+    protected function removeOldImages() {
+        // DESTRUCTIVE!!!
+        $files = glob($this->imageRepoPath."*tmp.png");
+        $now = time();
+
+        foreach ($files as $file) {
+            if ($now - filemtime($file) >= 60 * 60 * 24 * 10) { // 10 days
+                unlink($file);
+            }
+        }
+
+        if (count($this->imageRepo->getStatus()->deleted()) != 0) {
+            $this->imageRepo->stage();
+            $this->imageRepo->commit("remove old images");
+            $this->imageRepo->push();
+
+            exec("cd ".$this->imageRepoPath.";
+            git checkout --orphan newBranch;
+            git add -A;  # Add all files and commit them
+            git commit -m \"clear old files\";
+            git branch -D master;  # Deletes the master branch
+            git branch -m master;  # Rename the current branch to master
+            git push -f origin master;  # Force push master branch to github
+            git gc --aggressive --prune=all;     # remove the old files
+            git push --set-upstream origin master;  # fix upstream", $out);
+        }
     }
 }
 

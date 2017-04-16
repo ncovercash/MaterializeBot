@@ -4,6 +4,6 @@
         "php-http/guzzle6-adapter": "*",
         "tburry/pquery": "*",
         "facebook/webdriver": "*",
-        "j0k3r/php-imgur-api-client": "*"
+        "cypresslab/gitelephant": "*"
     }
 }

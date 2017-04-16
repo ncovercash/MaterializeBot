@@ -2,7 +2,7 @@
 
 Bot for Dogfalo/materialize that helps validate issues and other general tasks.
 
-A `config.json` file is needed with keys `gh_username` - bot GH username, `gh_password` - bot GH password, `imgur_id` - imgur client ID, and `imgur_secret` - imgur client secret in order to run this bot.
+A `config.json` file is needed with keys `gh_username` - bot GH username, `gh_password` - bot GH password, `image_repo` - name of repo to store images (user/repo), and `image_repo_path` - the path to the image repository, can be relative in order to run this bot.
 
 The imgur api is used to upload images of the code given by the user once run.
 
