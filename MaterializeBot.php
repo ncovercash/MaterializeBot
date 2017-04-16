@@ -24,9 +24,8 @@ class Bot {
     protected const REQUIRED_JS_FILE = "/materialize\.(min\.)?js/";
     protected const REQUIRED_CSS_FILE = "/materialize\.(min\.)?css/";
     public const PROJECT_NAME = "materialize";
-    protected const JSHINT_HEADER_LENGTH = 15;
     protected const JS_HEADER_LOC = "jshint_header.js";
-    protected const SLEEP_TIME = 2; // seconds
+    protected const SLEEP_TIME = 10; // seconds
     protected const SPECIFIC_PAIR_CHECKS = Array(
         "chips" => ".material_chip(",
         "carousel" => ".carousel(",
@@ -40,10 +39,13 @@ class Bot {
     public $username;
     protected $openIssues, $closedIssues;
     protected $imageRepo, $imageRepoPath, $imageRepoName;
+    protected $js_header_length;
 
     protected $highestAnalyzedIssueNumber=0;
 
     public function __construct($repository) {
+        $this->js_header_length = count(file(self::JS_HEADER_LOC)) - 1;
+
         $this->repository = $repository;
 
         $this->githubClient = new Client();
@@ -58,6 +60,8 @@ class Bot {
 
         $this->seleniumDriver = RemoteWebDriver::create("http://localhost:4444/wd/hub", DesiredCapabilities::chrome(), 2000);
 
+        $this->highestAnalyzedIssueNumber = 61;
+
         $this->run();
     }
 
@@ -67,7 +71,6 @@ class Bot {
         if (rename($file, $newname)) {
             $this->imageRepo->stage();
             $this->imageRepo->commit(time(), true);
-            $this->imageRepo->push();
             return "https://github.com/".$this->imageRepoName."/blob/master/".$fname;
         } else {
             return "error";
@@ -529,7 +532,7 @@ class Bot {
             $error = preg_replace("/tmp\/tmp.js\: /", "", $error);
             preg_match("/\d+/", $error, $matches); 
             $line = $matches[0];
-            $line -= self::JSHINT_HEADER_LENGTH;
+            $line -= $this->js_header_length;
             $error = preg_replace("/\d+/", $line, $error, 1);
             $returnArr[] = $error;
         }
@@ -601,9 +604,14 @@ class Bot {
         $statement .= "  \n";
         $statement .= "_I'm a bot, bleep, bloop. If there was an error, please let us know._  \n";
 
+        // reset browser
+        $this->seleniumDriver->get("about:blank");
+
         $this->githubClient->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => htmlspecialchars($statement)));
 
         echo "Issue ".$issue["number"]." has been analyzed and commented on in ".(microtime(true)-$start)."s.\n";
+
+        $this->imageRepo->push();
     }
 
     protected function analyzeOpenIssues() {
