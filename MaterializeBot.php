@@ -1,5 +1,24 @@
 <?php
 
+/**
+ * all that is left:
+ *   support for more code hosting places (codepen, jsfiddle, and markdown are supported)
+ *   inactive issues
+ *   refinement on html and js warnings (too verbose atm) but mostly good
+ * It does the following
+ *   extract code from codepen/jsfiddle/markdown
+ *   find missing materialize
+ *   find html errors in code
+ *   find js console errors
+ *   gives a temp (1 week) screenshot of the page on chrome with materialize known implemented correctly
+ *   Static analysis JS errors too
+ *   detects empty body and unfilled template
+ *   shows similar issues based on keywords (biased towards closed ones)
+ *   apply enhancement label if title contains "feature request" or "new feature"
+ *   adds has-pr label automatically
+ *   reanalyze issues per user request
+ */
+
 define("DEBUG", true);
 
 if (DEBUG) {
@@ -65,14 +84,14 @@ class Bot {
 
         switch ($mode) {
             case self::MAIN:
-                $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 2000);
+                $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 3000);
                 $this->runMain();
                 break;
             case self::HAS_PR:
                 $this->runPRLabel();
                 break;
             case self::REANALYZE:
-                $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 2000);
+                $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 3000);
                 $this->runReanalyze();
         }
     }
@@ -591,7 +610,7 @@ class Bot {
                 $hasIssues = true;
 
                 $this->seleniumDriver->quit();
-                $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 2000);
+                $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 3000);
             }
 
             return $statement."  \n";
@@ -1447,10 +1466,10 @@ class Bot {
                             $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
                         }
                     } else {
+                        $statement .= "No issues were found!.  \n";
                         foreach ($issue["labels"] as $label) {
                             if ($label["name"] == "awaiting reply".self::LABEL_SUFFIX) {
                                 $this->githubClient->api("issue")->labels()->remove($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
-                                return;
                             }
                         }
                     }

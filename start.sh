@@ -15,3 +15,5 @@ function ctrl_c() {
 	brew services restart selenium-server-standalone >> logs/bot.log 2>&1
 	exit 15
 }
+
+read # wait eternally for ctrl_c
