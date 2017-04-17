@@ -32,8 +32,13 @@ Known Issues
 Planned Features
 ===
 
-* Issue auto-closing after a specified time (see #8)
-* Support for more platforms for code analyzation (see #1)
+* Issue auto-closing after a specified time (see smileytechguy/MaterializeBot#8)
+* Support for more platforms for code analyzation (see smileytechguy/MaterializeBot#1)
+
+Capabilities
+===
+
+
 
 A `config.json` file is needed with keys `gh_username` - bot GH username, `gh_password` - bot GH password, `image_repo` - name of repo to store images (user/repo), and `image_repo_path` - the path to the image repository, can be relative in order to run this bot.
 
