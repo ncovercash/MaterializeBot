@@ -1,6 +1,39 @@
 # MaterializeBot
 
-Bot for Dogfalo/materialize that helps validate issues and other general tasks.
+Github issue management bot orignally designed for Dogfalo/Materialize.
+
+Table of Contents
+===
+
+* [Introduction](#introduction)
+* [Known Issues](#known-issues)
+* [Planned Features](#planned-features)
+* [Capabilities](#capabilities)
+* [Configuration](#configuration)
+* [Installation](#installation)
+* [Usage](#usage)
+  * [Main thread](#main-thread)
+  * [PR thread](#pr-thread)
+  * [Reanalyzation thread](#reanalyzation-thread)
+* [Examples](#examples)
+* [Dependency overview](#dependencies)
+* [Method Description](#method-description)
+
+Introduction
+===
+
+This bot is designed to automatically analyze and manage issues in a GitHub repository under a "bot" account.  It can analyze many different code hosting platforms, including Codepen, JSFiddle, and markdown snippets.
+
+Known Issues
+===
+
+* Selenium cannot handle alert() well.  Currently, this is mitigated by providing a notice that the page could not be rendered and console tested.
+
+Planned Features
+===
+
+* Issue auto-closing after a specified time (see #8)
+* Support for more platforms for code analyzation (see #1)
 
 A `config.json` file is needed with keys `gh_username` - bot GH username, `gh_password` - bot GH password, `image_repo` - name of repo to store images (user/repo), and `image_repo_path` - the path to the image repository, can be relative in order to run this bot.
 

@@ -2,7 +2,7 @@
 
 /**
  * all that is left:
- *   support for more code hosting places (codepen, jsfiddle, and markdown are supported)
+ *   support for more code hosting places (codepen, jsfiddle, markdown, and jsbin are supported)
  *   inactive issues
  *   refinement on html and js warnings (too verbose atm) but mostly good
  * It does the following
@@ -59,6 +59,7 @@ class Bot {
         "scrollspy" => ".scrollSpy(",
         "side-nav" => ".sideNav("
         );
+    protected const STREAM_CONTEXT = Array("http" => Array("method" => "GET", "timeout" => 10));
     public $alive=true;
     protected $githubClient, $githubPaginator, $seleniumDriver;
     public $repository;
@@ -254,25 +255,33 @@ class Bot {
         $statement = "";
         if (preg_match_all("/http(s|)\:\/\/(www\.|)codepen\.io\/[a-zA-Z0-9\-]+\/(pen|details|full|pres)\/[a-zA-Z0-9]+/", $issue["body"], $codepens) && !preg_match("/xbzPQV/", $issue["body"])) {
             $links = $codepens[0];
+            $links = array_unique($links);
+            if (count($links) > 10) {
+                $statement .= "Only the first 10 Codepens will be analyzed.  \n";
+            }
+            $links = array_slice($links, 0, 10);
             if (count($links) === 1) {
                 $link = $links[0];
 
                 $statement .= "Your codepen at ".$link." is greatly appreciated!  \n";
                 $statement .= "If there are any issues below, please fix them:  \n";
 
-                $page = file_get_contents($link);
+                $page = file_get_contents($link, false, stream_context_create(self::STREAM_CONTEXT));
 
                 if ($page === false) {
                     $statement .= "* The codepen does not exist or could not be found  \n";
+                    $hasIssues = true;
+                    return $statement;
                 }
 
-                $html = file_get_contents($link.".html");
-                $js = file_get_contents($link.".js");
-                $css = file_get_contents($link.".css");
+                $html = file_get_contents($link.".html", false, stream_context_create(self::STREAM_CONTEXT));
+                $js = file_get_contents($link.".js", false, stream_context_create(self::STREAM_CONTEXT));
+                $css = file_get_contents($link.".css", false, stream_context_create(self::STREAM_CONTEXT));
 
                 if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
                     !preg_match(self::REQUIRED_CSS_FILE, $page)) {
                     $statement .= "* The codepen may not correctly include ".self::PROJECT_NAME."  \n";
+                    $hasIssues = true;
                 }
 
                 $errors = self::getHTMLBodyErrors($html);
@@ -280,6 +289,7 @@ class Bot {
                 foreach ($errors as $error) {
                     if (strlen($error) != 0) {
                         $statement .= "* HTML ".$error."  \n";
+                        $hasIssues = true;
                     }
                 }
 
@@ -288,6 +298,7 @@ class Bot {
 
                 foreach ($errors as $error) {
                     $statement .= "* JS ".$error."  \n";
+                    $hasIssues = true;
                 }
 
                 // Specific
@@ -295,6 +306,7 @@ class Bot {
 
                 foreach ($errors as $error) {
                     $statement .= "* ".$error."  \n";
+                    $hasIssues = true;
                 }
 
                 try {
@@ -306,7 +318,7 @@ class Bot {
                     $image = $this->getSeleniumImage();
                     $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
                 } catch (Exception $e) {
-                    $statement .= "* Unable to render content with selenium: ".$e->getResults()["state"].".  \n";
+                    $statement .= "* Unable to render content with selenium  \n";
                     $hasIssues = true;
 
                     $this->seleniumDriver->quit();
@@ -329,18 +341,23 @@ class Bot {
                 $statement .= "If there are any issues below, please fix them:  \n";
 
                 foreach ($links as $link) {
-                    $page = file_get_contents($link);
+                    $page = file_get_contents($link, false, stream_context_create(self::STREAM_CONTEXT));
 
                     if ($page === false) {
-                        $statement .= "* The codepen does not exist or could not be found  \n";
+                        $statement .= "* Codepen [".$i."](".$link.") does not exist or could not be found  \n";
+                        $hasIssues = true;
+                        $i++;
+                        continue;
                     }
-                    $html = file_get_contents($link.".html");
-                    $js = file_get_contents($link.".js");
-                    $css = file_get_contents($link.".css");
+
+                    $html = file_get_contents($link.".html", false, stream_context_create(self::STREAM_CONTEXT));
+                    $js = file_get_contents($link.".js", false, stream_context_create(self::STREAM_CONTEXT));
+                    $css = file_get_contents($link.".css", false, stream_context_create(self::STREAM_CONTEXT));
 
                     if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
                         !preg_match(self::REQUIRED_CSS_FILE, $page)) {
-                        $statement .= "* The codepen may not correctly include ".self::PROJECT_NAME."  \n";
+                        $statement .= "* Codepen [".$i."](".$link.") may not correctly include ".self::PROJECT_NAME."  \n";
+                        $hasIssues = true;
                     }
 
                     $errors = self::getHTMLBodyErrors($html);
@@ -348,6 +365,7 @@ class Bot {
                     foreach ($errors as $error) {
                         if (strlen($error) != 0) {
                             $statement .= "* Codepen [".$i."](".$link.") HTML ".$error."  \n";
+                            $hasIssues = true;
                         }
                     }
 
@@ -355,12 +373,14 @@ class Bot {
 
                     foreach ($errors as $error) {
                         $statement .= "* Codepen [".$i."](".$link.") JS ".$error."  \n";
+                        $hasIssues = true;
                     }
 
                     $errors = self::specificPlatformErrors($html, $js, $hasIssues);
 
                     foreach ($errors as $error) {
                         $statement .= "* Codepen [".$i."](".$link.") ".$error."  \n";
+                        $hasIssues = true;
                     }
 
                     try {
@@ -372,7 +392,7 @@ class Bot {
                         $image = $this->getSeleniumImage();
                         $statement .= "  \n  \nCodepen [".$i."](".$link.") image rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
                     } catch (Exception $e) {
-                        $statement .= "* Codepen [".$i."](".$link.") Unable to render content with selenium: ".$e->getResults()["state"].".  \n";
+                        $statement .= "* Codepen [".$i."](".$link.") Unable to render content with selenium  \n";
                         $hasIssues = true;
 
                         $this->seleniumDriver->quit();
@@ -397,16 +417,23 @@ class Bot {
         $statement = "";
         if (preg_match_all("/http(s|)\:\/\/(www\.|)jsfiddle\.net\/[a-zA-Z0-9\-]+\/[a-zA-Z0-9]+/", $issue["body"], $fiddles)) {
             $links = $fiddles[0];
+            $links = array_unique($links);
+            if (count($links) > 10) {
+                $statement .= "Only the first 10 JSFiddles will be analyzed.  \n";
+            }
+            $links = array_slice($links, 0, 10);
             if (count($links) === 1) {
                 $link = $links[0];
 
                 $statement .= "Your fiddle at ".$link." is greatly appreciated!  \n";
                 $statement .= "If there are any issues below, please fix them:  \n";
 
-                $page = file_get_contents($link);
+                $page = file_get_contents($link, false, stream_context_create(self::STREAM_CONTEXT));
 
                 if ($page === false) {
                     $statement .= "* The fiddle does not exist or could not be found  \n";
+                    $hasIssues = true;
+                    return $statement;
                 }
 
                 $dom = pQuery::parseStr($page);
@@ -417,6 +444,7 @@ class Bot {
                 if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
                     !preg_match(self::REQUIRED_CSS_FILE, $page)) {
                     $statement .= "* The fiddle may not correctly include ".self::PROJECT_NAME."  \n";
+                    $hasIssues = true;
                 }
 
                 $errors = self::getHTMLBodyErrors($html);
@@ -424,6 +452,7 @@ class Bot {
                 foreach ($errors as $error) {
                     if (strlen($error) != 0) {
                         $statement .= "* HTML ".$error."  \n";
+                        $hasIssues = true;
                     }
                 }
 
@@ -432,12 +461,14 @@ class Bot {
 
                 foreach ($errors as $error) {
                     $statement .= "* JS ".$error."  \n";
+                    $hasIssues = true;
                 }
 
                 $errors = self::specificPlatformErrors($html, $js, $hasIssues);
 
                 foreach ($errors as $error) {
                     $statement .= "* ".$error."  \n";
+                    $hasIssues = true;
                 }
 
                 try {
@@ -449,7 +480,7 @@ class Bot {
                     $image = $this->getSeleniumImage();
                     $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
                 } catch (Exception $e) {
-                    $statement .= "* Unable to render content with selenium: ".$e->getResults()["state"].".  \n";
+                    $statement .= "* Unable to render content with selenium  \n";
                     $hasIssues = true;
 
                     $this->seleniumDriver->quit();
@@ -472,15 +503,19 @@ class Bot {
                 $statement .= "If there are any issues below, please fix them:  \n";
 
                 foreach ($links as $link) {
-                    $page = file_get_contents($link);
+                    $page = file_get_contents($link, false, stream_context_create(self::STREAM_CONTEXT));
 
                     if ($page === false) {
-                        $statement .= "* The fiddle does not exist or could not be found  \n";
+                        $statement .= "* Fiddle [".$i."](".$link.") does not exist or could not be found  \n";
+                        $hasIssues = true;
+                        $i++;
+                        continue;
                     }
 
                     if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
                         !preg_match(self::REQUIRED_CSS_FILE, $page)) {
-                        $statement .= "* The fiddle may not correctly include ".self::PROJECT_NAME."  \n";
+                        $statement .= "* Fiddle [".$i."](".$link.") may not correctly include ".self::PROJECT_NAME."  \n";
+                        $hasIssues = true;
                     }
 
                     $dom = pQuery::parseStr($page);
@@ -493,6 +528,7 @@ class Bot {
                     foreach ($errors as $error) {
                         if (strlen($error) != 0) {
                             $statement .= "* Fiddle [".$i."](".$link.") HTML ".$error."  \n";
+                            $hasIssues = true;
                         }
                     }
 
@@ -500,12 +536,14 @@ class Bot {
 
                     foreach ($errors as $error) {
                         $statement .= "* Fiddle [".$i."](".$link.") JS ".$error."  \n";
+                        $hasIssues = true;
                     }
 
                     $errors = self::specificPlatformErrors($html, $js, $hasIssues);
 
                     foreach ($errors as $error) {
                         $statement .= "* Fiddle [".$i."](".$link.") ".$error."  \n";
+                        $hasIssues = true;
                     }
 
                     try {
@@ -517,7 +555,7 @@ class Bot {
                         $image = $this->getSeleniumImage();
                         $statement .= "  \n  \nFiddle [".$i."](".$link.") image rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
                     } catch (Exception $e) {
-                        $statement .= "* Fiddle [".$i."](".$link.") Unable to render content with selenium: ".$e->getResults()["state"].".  \n";
+                        $statement .= "* Fiddle [".$i."](".$link.") Unable to render content with selenium  \n";
                         $hasIssues = true;
 
                         $this->seleniumDriver->quit();
@@ -606,7 +644,7 @@ class Bot {
                 $image = $this->getSeleniumImage();
                 $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
             } catch (Exception $e) {
-                $statement .= "* Unable to render content with selenium: ".$e->getResults()["state"].".  \n";
+                $statement .= "* Unable to render content with selenium  \n";
                 $hasIssues = true;
 
                 $this->seleniumDriver->quit();
@@ -616,6 +654,237 @@ class Bot {
             return $statement."  \n";
         }
         return "";
+    }
+
+    public function getJSBinStatement(array $issue, bool &$hasIssues) : string {
+        $statement = "";
+        if (preg_match_all("/http(s|)\:\/\/(www\.|)jsbin\.com\/[a-zA-Z0-9\-]+(\/[0-9]+|\/latest|\/)/", $issue["body"], $bins)) {
+            $links = $bins[0];
+            $links = array_unique($links);
+            if (count($links) > 10) {
+                $statement .= "Only the first 10 JSBins will be analyzed.  \n";
+            }
+            $links = array_slice($links, 0, 10);
+            if (count($links) === 1) {
+                $link = $links[0];
+
+                $statement .= "Your bin at ".$link." is greatly appreciated!  \n";
+                $statement .= "If there are any issues below, please fix them:  \n";
+
+                $link = $link."edit?html,css,js";
+
+                $page = file_get_contents($link, false, stream_context_create(self::STREAM_CONTEXT));
+
+                if ($page === false) {
+                    $statement .= "* The bin does not exist or could not be found  \n";
+                    $hasIssues = true;
+                    return $statement;
+                }
+
+                preg_match_all("/http\:\/\/jsbin.com\/bin\/start\.js\?[a-zA-Z0-9]+/", $page, $subpatterns);
+
+                $realPage = $subpatterns[0][0];
+
+                $opts = array(
+                    "http"=>array(
+                        "header"=>"Referer: ".$link."\r\n"
+                  )
+                );
+
+                $page = file_get_contents($realPage, false, stream_context_create(array_merge($opts, self::STREAM_CONTEXT)));
+
+                if ($page === false) {
+                    $statement .= "* The bin does not exist or could not be found  \n";
+                    $hasIssues = true;
+                    return $statement;
+                }
+
+                $page = preg_replace("/start\(/", "", $page, 1);
+
+                $page = substr($page, 0, strpos($page, ",\"url\":\"http"));
+
+                $json = json_decode($page."}", true);
+
+                $html = $json["html"];
+                $js = $json["javascript"];
+                $css = $json["css"];
+
+                if (!preg_match(self::REQUIRED_JS_FILE, $html) ||
+                    !preg_match(self::REQUIRED_CSS_FILE, $html)) {
+                    $statement .= "* The bin may not correctly include ".self::PROJECT_NAME."  \n";
+                    $hasIssues = true;
+                }
+
+                if (preg_match("/<body>/", $html)) {
+                    $errors = self::getHTMLErrors($html);
+                } else {
+                    $errors = self::getHTMLBodyErrors($html);
+                }
+
+                foreach ($errors as $error) {
+                    if (strlen($error) != 0) {
+                        $statement .= "* HTML ".$error."  \n";
+                        $hasIssues = true;
+                    }
+                }
+
+                // JS
+                $errors = self::getJSErrors($js);
+
+                foreach ($errors as $error) {
+                    $statement .= "* JS ".$error."  \n";
+                    $hasIssues = true;
+                }
+
+                $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+
+                foreach ($errors as $error) {
+                    $statement .= "* ".$error."  \n";
+                    $hasIssues = true;
+                }
+
+                try {
+                    // Console
+                    if (preg_match("/<body>/", $html)) {
+                        $seleniumErrors = $this->getSeleniumErrorsFromHTMLJSandCSS($html, $js, $css);
+                    } else {
+                        $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                    }
+                    
+                    $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues);
+    
+                    // Image
+                    $image = $this->getSeleniumImage();
+                    $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                } catch (Exception $e) {
+                    $statement .= "* Unable to render content with selenium  \n";
+                    $hasIssues = true;
+
+                    $this->seleniumDriver->quit();
+                    $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 2000);
+                }
+
+                if ($hasIssues) {
+                    $statement .= "  \n  \nPlease note, if you preprocess HTML or JS, the line and column numbers are for the processed code.  \n";
+                    $statement .= "Additionally, any added libraries will be omitted in the above check.  \n";
+                    $hasIssues = true;
+                }
+            } else {
+                $statement .= "Your bins at ";
+                foreach ($links as $link) {
+                    $statement .= $link." ";
+                }
+                $statement .= "are greatly appreciated!  \n";
+                $i = 1;
+
+                $statement .= "If there are any issues below, please fix them:  \n";
+
+                foreach ($links as $link) {
+                    $link = $link."edit?html,css,js";
+
+                    $page = file_get_contents($link, false, stream_context_create(self::STREAM_CONTEXT));
+
+                    if ($page === false) {
+                        $statement .= "* Bin [".$i."](".$link.") does not exist or could not be found  \n";
+                        $hasIssues = true;
+                        $i++;
+                        continue;
+                    }
+
+                    preg_match_all("/htt(p|ps)\:\/\/(www\.j|j)sbin.com\/bin\/start\.js\?[a-zA-Z0-9]+/", $page, $subpatterns);
+
+                    $realPage = $subpatterns[0][0];
+
+                    $opts = array(
+                        "http"=>array(
+                            "header"=>"Referer: ".$link."\r\n"
+                      )
+                    );
+
+                    $page = file_get_contents($realPage, false, stream_context_create(array_merge($opts, self::STREAM_CONTEXT)));
+
+                    if ($page === false) {
+                        $statement .= "* Bin [".$i."](".$link.") does not exist or could not be found  \n";
+                        $hasIssues = true;
+                        $i++;
+                        continue;
+                    }
+
+                    $page = preg_replace("/start\(/", "", $page, 1);
+
+                    $page = substr($page, 0, strpos($page, ",\"url\":\"http"));
+
+                    $json = json_decode($page."}", true);
+
+                    $html = $json["html"];
+                    $js = $json["javascript"];
+                    $css = $json["css"];
+
+                    if (!preg_match(self::REQUIRED_JS_FILE, $page) ||
+                        !preg_match(self::REQUIRED_CSS_FILE, $page)) {
+                        $statement .= "* Bin [".$i."](".$link.") may not correctly include ".self::PROJECT_NAME."  \n";
+                        $hasIssues = true;
+                    }
+
+                    if (preg_match("/<body>/", $html)) {
+                        $errors = self::getHTMLErrors($html);
+                    } else {
+                        $errors = self::getHTMLBodyErrors($html);
+                    }
+
+                    foreach ($errors as $error) {
+                        if (strlen($error) != 0) {
+                            $statement .= "* Bin [".$i."](".$link.") HTML ".$error."  \n";
+                            $hasIssues = true;
+                        }
+                    }
+
+                    $errors = self::getJSErrors($js);
+
+                    foreach ($errors as $error) {
+                        $statement .= "* Bin [".$i."](".$link.") JS ".$error."  \n";
+                        $hasIssues = true;
+                    }
+
+                    $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+
+                    foreach ($errors as $error) {
+                        $statement .= "* Bin [".$i."](".$link.") ".$error."  \n";
+                        $hasIssues = true;
+                    }
+
+                    try {
+                        // Console
+                        if (preg_match("/<body>/", $html)) {
+                            $seleniumErrors = $this->getSeleniumErrorsFromHTMLJSandCSS($html, $js, $css);
+                        } else {
+                            $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                        }
+                        $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues, "Bin [".$i."](".$link.") ");
+        
+                        // Image
+                        $image = $this->getSeleniumImage();
+                        $statement .= "  \n  \nBin [".$i."](".$link.") image rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                    } catch (Exception $e) {
+                        $statement .= "* Bin [".$i."](".$link.") Unable to render content with selenium  \n";
+                        $hasIssues = true;
+
+                        $this->seleniumDriver->quit();
+                        $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 5000);
+                    }
+
+                    $i++;
+                    $statement .= "  \n";
+                }
+
+                if ($hasIssues) {
+                    $statement .= "  \n  \nPlease note, if you preprocess HTML or JS, the line and column numbers are for the processed code.  \n";
+                    $statement .= "Additionally, any added libraries will be omitted in the above check.  \n";
+                    $hasIssues = true;
+                }
+            }
+        }
+        return $statement."  \n";
     }
 
     public static function getJSErrors(string $in) : array {
@@ -688,6 +957,7 @@ class Bot {
     }
 
     public function getSimilarIssues(array $issue) : string {
+        $issue["title"] = $issue["title"].$issue["body"]; // bad i know
         if (preg_match("/select/", $issue["title"])) {
             $statement  = "Similar issues related to `select`:  \n";
             $similar = 0;
@@ -1376,6 +1646,7 @@ class Bot {
         $statement .= $this->getCodepenStatement($issue, $hasIssues);
         $statement .= $this->getJSFiddleStatement($issue, $hasIssues);
         $statement .= $this->getMarkdownStatement($issue, $hasIssues);
+        $statement .= $this->getJSBinStatement($issue, $hasIssues);
 
         if ($hasIssues) {
             $statement .= "If the screenshot or log is extremely different from your version, it may be due to a missing dependency (jquery?) on either side.  \n";
@@ -1449,6 +1720,7 @@ class Bot {
                     $statement .= $this->getCodepenStatement($issue, $hasIssues);
                     $statement .= $this->getJSFiddleStatement($issue, $hasIssues);
                     $statement .= $this->getMarkdownStatement($issue, $hasIssues);
+                    $statement .= $this->getJSBinStatement($issue, $hasIssues);
 
                     if ($hasIssues) {
                         $statement .= "If the screenshot or log is extremely different from your version, it may be due to a missing dependency (jquery?) on either side.  \n";
@@ -1487,7 +1759,7 @@ class Bot {
                     echo "Issue ".$issue["number"]." has been reanalyzed in ".(microtime(true)-$start)."s.\n";
 
                     $this->imageRepo->push();
-
+                    return;
                 }
             }
         }
@@ -1555,6 +1827,7 @@ class Bot {
     protected function updateOpenPRLabels() {
         foreach ($this->openIssues as $issue) {
             $this->updatePRLabel($issue);
+            sleep(1);
         }
     }
 
