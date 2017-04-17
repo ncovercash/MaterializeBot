@@ -1620,23 +1620,30 @@ class Bot {
 }
 
 if (isset($argv[1])) {
-    switch ($argv[1]) {
-        case 'main':
-            new Bot($repository, Bot::MAIN);
-            break;
-        case 'pr':
-            new Bot($repository, Bot::HAS_PR);
-            break;
-        case 'reanalyze':
-            new Bot($repository, Bot::REANALYZE);
-            break;
-        default:
-            echo "Usage: php ".basename(__FILE__)." mode\n";
-            echo "\n";
-            echo "Mode can be:\n";
-            echo "  main - main thread, for initial issue analyzation.\n";
-            echo "  pr - pr thread, for has-pr label.\n";
-            echo "  reanalyze - reanalyze issues.\n";
+    while (true) {
+        try {
+            switch ($argv[1]) {
+                case 'main':
+                    new Bot($repository, Bot::MAIN);
+                    break;
+                case 'pr':
+                    new Bot($repository, Bot::HAS_PR);
+                    break;
+                case 'reanalyze':
+                    new Bot($repository, Bot::REANALYZE);
+                    break;
+                default:
+                    echo "Usage: php ".basename(__FILE__)." mode\n";
+                    echo "\n";
+                    echo "Mode can be:\n";
+                    echo "  main - main thread, for initial issue analyzation.\n";
+                    echo "  pr - pr thread, for has-pr label.\n";
+                    echo "  reanalyze - reanalyze issues.\n";
+                    break 2;
+            }
+        } catch (Exception $e) {
+            echo "THREAD QUIT WITH ERROR ".$e->getMessage()."...restarting\n";
+        }
     }
 } else {
     echo "Usage: php ".basename(__FILE__)." mode\n";
