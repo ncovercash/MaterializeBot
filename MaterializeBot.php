@@ -16,6 +16,10 @@ if(!is_file("config.json")) {
 require_once "config.php";
 
 class Bot {
+    public const MAIN = 0;
+    public const HAS_PR = 1;
+    public const REANALYZE = 2;
+
     protected const TIDY_CONFIG = Array();
     protected const REQUIRED_JS_FILE = "/materialize\.(min\.)?js/";
     protected const REQUIRED_CSS_FILE = "/materialize\.(min\.)?css/";
@@ -23,9 +27,11 @@ class Bot {
     protected const LABEL_SUFFIX = " (bot)";
     protected const JS_HEADER_LOC = "jshint_header.js";
     protected const SLEEP_TIME = 10; // seconds
-    // protected const SLEEP_TIME = 120; // seconds
+    // protected const SLEEP_TIME = 20; // seconds
     protected const SLEEP_TIME_PRS = 100; // seconds
-    // protected const SLEEP_TIME_PRS = 600; // seconds
+    // protected const SLEEP_TIME_PRS = 300; // seconds
+    protected const SLEEP_TIME_REANALYZE = 60; // seconds
+    // protected const SLEEP_TIME_REANALYZE = 120; // seconds
     protected const SPECIFIC_PAIR_CHECKS = Array(
         "chips" => ".material_chip(",
         "carousel" => ".carousel(",
@@ -41,13 +47,10 @@ class Bot {
     protected $openIssues, $closedIssues;
     protected $openPRs, $closedPRs, $prNumbers;
     protected $imageRepo, $imageRepoPath, $imageRepoName;
-    protected $js_header_length;
 
     protected $highestAnalyzedIssueNumber=0;
 
-    public function __construct($repository, bool $scanPRs=false) {
-        $this->js_header_length = count(file(self::JS_HEADER_LOC)) - 1;
-
+    public function __construct($repository, int $mode) {
         $this->repository = $repository;
 
         $this->githubClient = new \Github\Client();
@@ -55,17 +58,22 @@ class Bot {
         $this->loadConfig();
 
         $this->refreshIssues();
-        $this->updatePRs();
 
         $this->updateIssueCounter();
 
-        echo "Bot started...running as of issue ".$this->highestAnalyzedIssueNumber."\n";
+        echo "Bot mode ".$mode." started...running as of issue ".$this->highestAnalyzedIssueNumber."\n";
 
-        if ($scanPRs) {
-            $this->runPRLabel();
-        } else {
-            $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 2000);
-            $this->run();
+        switch ($mode) {
+            case self::MAIN:
+                $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 2000);
+                $this->runMain();
+                break;
+            case self::HAS_PR:
+                $this->runPRLabel();
+                break;
+            case self::REANALYZE:
+                $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", \Facebook\WebDriver\Remote\DesiredCapabilities::chrome(), 2000);
+                $this->runReanalyze();
         }
     }
 
@@ -119,7 +127,7 @@ class Bot {
         }
     }
 
-    public function run() {
+    public function runMain() {
         while ($this->alive) {
             $this->refreshIssues();
 
@@ -140,6 +148,16 @@ class Bot {
             $this->updateOpenPRLabels();
             
             sleep(self::SLEEP_TIME_PRS);
+        }
+    }
+
+    public function runReanalyze() {
+        while ($this->alive) {
+            $this->refreshIssues();
+
+            $this->reanalyzeIssues();
+            
+            sleep(self::SLEEP_TIME_REANALYZE);
         }
     }
 
@@ -583,6 +601,9 @@ class Bot {
 
     public static function getJSErrors(string $in) : array {
         $js_header = file_get_contents(self::JS_HEADER_LOC);
+
+        $js_header_length = count(file(self::JS_HEADER_LOC)) - 1;
+
         file_put_contents("tmp/tmp.js", $js_header.$in);
 
         exec("/usr/local/bin/jshint tmp/tmp.js", $errors);
@@ -597,7 +618,7 @@ class Bot {
             $error = preg_replace("/tmp\/tmp.js\: /", "", $error);
             preg_match("/\d+/", $error, $matches); 
             $line = $matches[0];
-            $line -= $this->js_header_length;
+            $line -= $js_header_length;
             $error = preg_replace("/\d+/", $line, $error, 1);
             $returnArr[] = $error;
         }
@@ -1316,7 +1337,7 @@ class Bot {
         $text = $issue["title"].$issue["body"];
         $text = strtolower($text);
 
-        if (preg_match("/new feature/", $text) || preg_match("/feature request/", $text)) {
+        if (preg_match("/new feature/", $text) || preg_match("/feature request/", $text) || preg_match("/feature suggestion/", $text)) {
             $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "enhancement".self::LABEL_SUFFIX);
             return "I have detected a feature request.  If this is wrong, please remove the `enhancement ".self::LABEL_SUFFIX."` label.  \n\n";
         }
@@ -1341,7 +1362,7 @@ class Bot {
             $statement .= "If the screenshot or log is extremely different from your version, it may be due to a missing dependency (jquery?) on either side.  \n";
             $statement .= "  \n";
             $statement .= "Please fix the above issues and re-write your example so we at ".self::PROJECT_NAME." can verify it’s a problem with the library and not with your code, and further proceed fixing your issue.  \n";
-            $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@".$this->username." reanalyze`.  (It may take up to an hour for this to happen.)  \n";
+            $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@".$this->username." reanalyze`.  (It may take a while for this to happen.)  \n";
 
             $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
         } else {
@@ -1368,6 +1389,89 @@ class Bot {
         echo "Issue ".$issue["number"]." has been analyzed and commented on in ".(microtime(true)-$start)."s.\n";
 
         $this->imageRepo->push();
+    }
+
+    protected function reanalyzeIssues() {
+        foreach ($this->openIssues as $issue) {
+            $this->reanalyzeIssue($issue);
+        }
+    }
+
+    protected function reanalyzeIssue(array $issue) {
+        $start = microtime(true);
+
+        $comments = $this->githubPaginator->fetchAll($this->githubClient->api("issue")->comments(), "all", Array($this->repository[0], $this->repository[1], $issue["number"]));
+
+        $owner = $issue["user"]["login"];
+
+        $comments = array_reverse($comments);
+
+        for ($i=0; $i < count($comments); $i++) { 
+            if ($comments[$i]["user"]["login"] == $this->username) {
+                return;
+            }
+            if ($comments[$i]["user"]["login"] == $owner) {
+                if (preg_match("/@".strtolower($this->username)." reanalyze/", strtolower($comments[$i]["body"]))) {
+                    foreach ($comments as $comment) {
+                        if ($comment["user"]["login"] == $this->username) {
+                            if (preg_match("/(reanalyze|Thank you for creating an issue)/", $comment["body"])) {
+                                $this->githubClient->api('issue')->comments()->update($this->repository[0], $this->repository[1], $comment["id"], array('body' => "This comment is out of date.  See below for an updated analyzation."));
+                            }
+                        }
+                    }
+
+                    $hasIssues = false;
+
+                    $statement  = "@".$issue["user"]["login"].",  \n";
+                    $statement .= "Your code has been reanalyzed!  \n\n";
+
+                    $statement .= $this->getEmptyBody($issue, $hasIssues);
+                    $statement .= $this->getUnfilledTemplate($issue, $hasIssues);
+                    $statement .= $this->getCodepenStatement($issue, $hasIssues);
+                    $statement .= $this->getJSFiddleStatement($issue, $hasIssues);
+                    $statement .= $this->getMarkdownStatement($issue, $hasIssues);
+
+                    if ($hasIssues) {
+                        $statement .= "If the screenshot or log is extremely different from your version, it may be due to a missing dependency (jquery?) on either side.  \n";
+                        $statement .= "  \n";
+                        $statement .= "Please fix the above issues and re-write your example so we at ".self::PROJECT_NAME." can verify it’s a problem with the library and not with your code, and further proceed fixing your issue.  \n";
+                        $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@".$this->username." reanalyze`.  (It may take a while for this to happen.)  \n";
+
+                        $hasAwaitingLabel = false;
+                        foreach ($issue["labels"] as $label) {
+                            if ($label["name"] == "awaiting reply".self::LABEL_SUFFIX) {
+                                $hasAwaitingLabel = true;
+                            }
+                        }
+                        if (!$hasAwaitingLabel) {
+                            $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
+                        }
+                    } else {
+                        foreach ($issue["labels"] as $label) {
+                            if ($label["name"] == "awaiting reply".self::LABEL_SUFFIX) {
+                                $this->githubClient->api("issue")->labels()->remove($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
+                                return;
+                            }
+                        }
+                    }
+
+                    $statement .= $this->getSimilarIssues($issue);
+                    
+                    $statement .= "  \n";
+                    $statement .= "_I'm a bot, bleep, bloop. If there was an error, please let us know._  \n";
+
+                    // reset browser
+                    $this->seleniumDriver->get("about:blank");
+
+                    $this->githubClient->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => htmlspecialchars($statement)));
+
+                    echo "Issue ".$issue["number"]." has been reanalyzed in ".(microtime(true)-$start)."s.\n";
+
+                    $this->imageRepo->push();
+
+                }
+            }
+        }
     }
 
     protected function updatePRLabel(array $issue) {
@@ -1402,6 +1506,7 @@ class Bot {
 
             foreach ($issueAndPRs as $value) {
                 if (in_array($value, $this->prNumbers)) {
+                    echo "Adding has-pr to #".$issue["number"]."\n";
                     $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "has-pr".self::LABEL_SUFFIX);
 
                     $statement  = "Hi,  \n";
@@ -1430,7 +1535,6 @@ class Bot {
 
     protected function updateOpenPRLabels() {
         foreach ($this->openIssues as $issue) {
-            echo "Checking PR on ".$issue["number"]."\n";
             $this->updatePRLabel($issue);
         }
     }
@@ -1496,8 +1600,30 @@ class Bot {
     }
 }
 
-if (isset($argv[1]) && $argv[1] == "pr") {
-    new Bot($repository, true);
+if (isset($argv[1])) {
+    switch ($argv[1]) {
+        case 'main':
+            new Bot($repository, Bot::MAIN);
+            break;
+        case 'pr':
+            new Bot($repository, Bot::HAS_PR);
+            break;
+        case 'reanalyze':
+            new Bot($repository, Bot::REANALYZE);
+            break;
+        default:
+            echo "Usage: php ".basename(__FILE__)." mode\n";
+            echo "\n";
+            echo "Mode can be:\n";
+            echo "  main - main thread, for initial issue analyzation.\n";
+            echo "  pr - pr thread, for has-pr label.\n";
+            echo "  reanalyze - reanalyze issues.\n";
+    }
 } else {
-    new Bot($repository);
+    echo "Usage: php ".basename(__FILE__)." mode\n";
+    echo "\n";
+    echo "Mode can be:\n";
+    echo "  main - main thread, for initial issue analyzation.\n";
+    echo "  pr - pr thread, for has-pr label.\n";
+    echo "  reanalyze - reanalyze issues.\n";
 }
