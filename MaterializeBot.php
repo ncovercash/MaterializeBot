@@ -45,6 +45,7 @@ class Bot {
     protected const JSHINT_LOCATION = "/usr/local/bin/jshint";
     protected const STREAM_CONTEXT = Array("http" => Array("method" => "GET", "timeout" => 10));
     protected const UNFILLED_TEMPLATE_REGEX = "/(Add a detailed description of your issue|Layout the steps to reproduce your issue.|Use this Codepen to demonstrate your issue.|xbzPQV|Add supplemental screenshots or code examples. Look for a codepen template in our Contributing Guidelines.)/";
+    protected const BOT_ISSUE_FOOTER = "_I'm a bot, bleep, bloop. If there was an error, please let us know._  \nBot made by @smileytechguy.  \n"
     
     public $alive=true;
     protected $githubClient, $githubPaginator, $seleniumDriver;
@@ -1047,7 +1048,7 @@ class Bot {
         $statement .= $this->getSimilarIssues($issue);
         
         $statement .= "  \n";
-        $statement .= "_I'm a bot, bleep, bloop. If there was an error, please let us know._  \n";
+        $statement .= self::BOT_ISSUE_FOOTER;
 
         // reset browser
         $this->seleniumDriver->get("about:blank");
@@ -1127,7 +1128,7 @@ class Bot {
                     $statement .= $this->getSimilarIssues($issue);
                     
                     $statement .= "  \n";
-                    $statement .= "_I'm a bot, bleep, bloop. If there was an error, please let us know._  \n";
+                    $statement .= self::BOT_ISSUE_FOOTER;
 
                     // reset browser
                     $this->seleniumDriver->get("about:blank");
@@ -1184,7 +1185,7 @@ class Bot {
                     $statement .= "  \n";
                     $statement .= "If this was in error, the issue creator can comment `@".$this->username." ignore-pr` and I will remove it on my next cycle.  \n";
                     $statement .= "  \n";
-                    $statement .= "_I'm a bot, bleep, bloop. If there was an error, please let us know._  \n";
+                    $statement .= self::BOT_ISSUE_FOOTER;
 
                     $this->githubClient->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => htmlspecialchars($statement)));
                     return;

@@ -1,6 +1,6 @@
 # MaterializeBot
 
-Github issue management bot orignally designed for Dogfalo/Materialize.
+Github issue management bot orignally designed for Dogfalo/Materialize, but available for open use on any GitHub repository.
 
 Table of Contents
 ===
@@ -19,6 +19,7 @@ Table of Contents
 * [Dependency overview](#dependencies)
 * [Method Description](#method-description)
 * [Asynchronouns running and start script](#asynchronouns-running-and-start-script)
+* [Credit](#credit)
 
 Introduction
 ===
@@ -149,8 +150,9 @@ Inside the `Bot` class, there are many options:
 * `JSHINT_LOCATION` - location of the jshint binary
 * `STREAM_CONTEXT["http"]["timeout"]` - timeout to wait on HTTP requests.
 * `UNFILLED_TEMPLATE_REGEX` - regex to match an unfilled issue template
+* `BOT_ISSUE_FOOTER` - footer left at the bottom of each issue.  Default contains attribution to me and a bot notice.
 
-Any other blocks of text, such as "I'm a bot, bleep bloop" can be modified with a basic find command.
+Any other blocks of text can be modified with a basic find command.
 
 ## Additional files:
 
@@ -188,7 +190,8 @@ In order to install this bot, you must use a linux based or unix based system.  
 * git
 * GitHub repository for screenshots
 
-### Steps
+Usage
+===
 
 1. Install the above dependencies
   * use `composer install` for composer dependencies
@@ -198,9 +201,6 @@ In order to install this bot, you must use a linux based or unix based system.  
 5. Done!
 
 The bot will log to logs/bot.log, and output to the terminal.
-
-Usage
-===
 
 ## Main Thread
 
@@ -331,3 +331,9 @@ This script is designed to easily start the bot.  Looking at it line by line:
 :15 - `brew services restart...` - restart selenium (close any straggling browsers left from the bot)  
 :16 - `exit 130` - exit with ^C exit code  
 :19 - `tail -f logs/bot.log` - output log infinitely until ^C
+
+Credit
+===
+
+Any repository is welcome to use this bot, I just ask that you let me know so I know how it's being used.  
+If you really need to, you can remove the string that says it was made by me.  The string is under `Bot::BOT_ISSUE_FOOTER`.
