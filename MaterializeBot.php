@@ -57,6 +57,7 @@ class Bot {
 
     protected $highestAnalyzedIssueNumber=0;
 
+    // initialization functions
     public function __construct($repository, int $mode) {
         $this->repository = $repository;
 
@@ -84,6 +85,18 @@ class Bot {
         }
     }
 
+    protected function loadConfig() {
+        $config = json_decode(file_get_contents("config.json"), true);
+
+        $this->username = $config["gh_username"];
+        $this->githubClient->authenticate($config["gh_username"], $config["gh_password"], \Github\Client::AUTH_HTTP_PASSWORD);
+        $this->githubPaginator = new Github\ResultPager($this->githubClient);
+
+        $this->imageRepo = new \GitElephant\Repository($config["image_repo_path"]);
+        $this->imageRepoName = $config["image_repo"];
+        $this->imageRepoPath = $config["image_repo_path"];
+    }
+
     protected function initSelenium() {
         if (isset($this->seleniumDriver)) {
             $this->seleniumDriver->quit();
@@ -109,30 +122,7 @@ class Bot {
         $this->seleniumDriver = \Facebook\WebDriver\Remote\RemoteWebDriver::create("http://localhost:4444/wd/hub", $desiredCapabilities, 3000);
     }
 
-    protected function uploadImage(string $file) : string {
-        $fname = time().basename($file);
-        $newname = $this->imageRepoPath.$fname;
-        if (rename($file, $newname)) {
-            $this->imageRepo->stage();
-            $this->imageRepo->commit(time(), true);
-            return "https://github.com/".$this->imageRepoName."/blob/master/".$fname;
-        } else {
-            return "error";
-        }
-    }
-
-    protected function loadConfig() {
-        $config = json_decode(file_get_contents("config.json"), true);
-
-        $this->username = $config["gh_username"];
-        $this->githubClient->authenticate($config["gh_username"], $config["gh_password"], \Github\Client::AUTH_HTTP_PASSWORD);
-        $this->githubPaginator = new Github\ResultPager($this->githubClient);
-
-        $this->imageRepo = new \GitElephant\Repository($config["image_repo_path"]);
-        $this->imageRepoName = $config["image_repo"];
-        $this->imageRepoPath = $config["image_repo_path"];
-    }
-
+    // reload data functions
     protected function refreshIssues() {
         $this->closedIssues = $this->githubPaginator->fetchAll($this->githubClient->api("issue"), "all", Array($this->repository[0], $this->repository[1], Array("state" => "closed")));
         $this->openIssues = $this->githubPaginator->fetchAll($this->githubClient->api("issue"), "all", Array($this->repository[0], $this->repository[1], Array("state" => "open")));
@@ -159,6 +149,16 @@ class Bot {
         }
     }
 
+    // issue array wrapper functions
+    public function getUnanalyzedIssues() : array {
+        // TODO: I know there is a way better way to do this
+        // that uses a for/while loop instead
+        return array_filter($this->openIssues, function(array $issue) {
+            return $this->highestAnalyzedIssueNumber < $issue["number"];
+        });
+    }
+
+    // core run functions
     public function runMain() {
         while ($this->alive) {
             $this->refreshIssues();
@@ -193,24 +193,228 @@ class Bot {
         }
     }
 
-    public function getUnanalyzedIssues() : array {
-        // TODO: I know there is a way better way to do this
-        // that uses a for/while loop instead
-        return array_filter($this->openIssues, function(array $issue) {
-            return $this->highestAnalyzedIssueNumber < $issue["number"];
-        });
+    // issue analysis functions
+    protected function analyzeIssue(array $issue) {
+        $start = microtime(true);
+
+        $hasIssues = false;
+
+        $statement  = "@".$issue["user"]["login"].",  \n";
+        $statement .= "Thank you for creating an issue!  \n\n";
+
+        $statement .= $this->getEmptyBody($issue, $hasIssues);
+        $statement .= $this->getUnfilledTemplate($issue, $hasIssues);
+        $statement .= $this->getCodepenStatement($issue, $hasIssues);
+        $statement .= $this->getJSFiddleStatement($issue, $hasIssues);
+        $statement .= $this->getMarkdownStatement($issue, $hasIssues);
+        $statement .= $this->getJSBinStatement($issue, $hasIssues);
+
+        if ($hasIssues) {
+            $statement .= "If the screenshot or log is extremely different from your version, it may be due to a missing dependency (jquery?) on either side.  \n";
+            $statement .= "  \n";
+            $statement .= "Please fix the above issues and re-write your example so we at ".self::PROJECT_NAME." can verify it’s a problem with the library and not with your code, and further proceed fixing your issue.  \n";
+            $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@".$this->username." reanalyze`.  (It may take a while for this to happen.)  \n";
+
+            $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
+        } else {
+            foreach ($issue["labels"] as $label) {
+                if ($label["name"] == "awaiting reply".self::LABEL_SUFFIX) {
+                    $this->githubClient->api("issue")->labels()->remove($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
+                    return;
+                }
+            }
+        }
+
+        $statement .= $this->checkFeatureLabel($issue);
+        
+        $statement .= $this->getSimilarIssues($issue);
+        
+        $statement .= "  \n";
+        $statement .= self::BOT_ISSUE_FOOTER;
+
+        // reset browser
+        $this->seleniumDriver->get("about:blank");
+
+        $this->githubClient->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => htmlspecialchars($statement)));
+
+        echo "Issue ".$issue["number"]." has been analyzed and commented on in ".(microtime(true)-$start)."s.\n";
+
+        $this->imageRepo->push();
     }
 
+    // issue analysis wrapper functions
+    protected function analyzeUnanalyzedIssues() {
+        $issues = $this->getUnanalyzedIssues();
+
+        foreach ($issues as $issue) {
+            $this->analyzeIssue($issue);
+        }
+
+        $this->updateIssueCounter();
+    }
+
+    // issue reanalysis functions
+    protected function reanalyzeIssue(array $issue) {
+        $start = microtime(true);
+
+        $comments = $this->githubPaginator->fetchAll($this->githubClient->api("issue")->comments(), "all", Array($this->repository[0], $this->repository[1], $issue["number"]));
+
+        $owner = $issue["user"]["login"];
+
+        $comments = array_reverse($comments);
+
+        for ($i=0; $i < count($comments); $i++) { 
+            if ($comments[$i]["user"]["login"] == $this->username) {
+                return;
+            }
+            if ($comments[$i]["user"]["login"] == $owner) {
+                if (preg_match("/@".strtolower($this->username)." reanalyze/", strtolower($comments[$i]["body"]))) {
+                    foreach ($comments as $comment) {
+                        if ($comment["user"]["login"] == $this->username) {
+                            if (preg_match("/(reanalyze|Thank you for creating an issue)/", $comment["body"])) {
+                                $this->githubClient->api('issue')->comments()->update($this->repository[0], $this->repository[1], $comment["id"], array('body' => "This comment is out of date.  See below for an updated analyzation."));
+                            }
+                        }
+                    }
+
+                    $hasIssues = false;
+
+                    $statement  = "@".$issue["user"]["login"].",  \n";
+                    $statement .= "Your code has been reanalyzed!  \n\n";
+
+                    $statement .= $this->getEmptyBody($issue, $hasIssues);
+                    $statement .= $this->getUnfilledTemplate($issue, $hasIssues);
+                    $statement .= $this->getCodepenStatement($issue, $hasIssues);
+                    $statement .= $this->getJSFiddleStatement($issue, $hasIssues);
+                    $statement .= $this->getMarkdownStatement($issue, $hasIssues);
+                    $statement .= $this->getJSBinStatement($issue, $hasIssues);
+
+                    if ($hasIssues) {
+                        $statement .= "If the screenshot or log is extremely different from your version, it may be due to a missing dependency (jquery?) on either side.  \n";
+                        $statement .= "  \n";
+                        $statement .= "Please fix the above issues and re-write your example so we at ".self::PROJECT_NAME." can verify it’s a problem with the library and not with your code, and further proceed fixing your issue.  \n";
+                        $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@".$this->username." reanalyze`.  (It may take a while for this to happen.)  \n";
+
+                        $hasAwaitingLabel = false;
+                        foreach ($issue["labels"] as $label) {
+                            if ($label["name"] == "awaiting reply".self::LABEL_SUFFIX) {
+                                $hasAwaitingLabel = true;
+                            }
+                        }
+                        if (!$hasAwaitingLabel) {
+                            $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
+                        }
+                    } else {
+                        $statement .= "No issues were found!  \n  \n";
+                        foreach ($issue["labels"] as $label) {
+                            if ($label["name"] == "awaiting reply".self::LABEL_SUFFIX) {
+                                $this->githubClient->api("issue")->labels()->remove($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
+                            }
+                        }
+                    }
+
+                    $statement .= $this->getSimilarIssues($issue);
+                    
+                    $statement .= "  \n";
+                    $statement .= self::BOT_ISSUE_FOOTER;
+
+                    // reset browser
+                    $this->seleniumDriver->get("about:blank");
+
+                    $this->githubClient->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => htmlspecialchars($statement)));
+
+                    echo "Issue ".$issue["number"]." has been reanalyzed in ".(microtime(true)-$start)."s.\n";
+
+                    $this->imageRepo->push();
+                    return;
+                }
+            }
+        }
+    }
+
+    // issue reanalysis wrapper functions
+    protected function reanalyzeIssues() {
+        foreach ($this->openIssues as $issue) {
+            $this->reanalyzeIssue($issue);
+        }
+    }
+
+    // generic functions
+    protected function reviewAllIssues() {
+        $this->highestAnalyzedIssueNumber = 0;
+        $this->updatePRs();
+        $this->updateAllPRLabels();
+        $this->analyzeUnanalyzedIssues();
+    }
+
+    protected function updateIssueCounter() {
+        if (count($this->openIssues) != 0) {
+            $this->highestAnalyzedIssueNumber = $this->openIssues[0]["number"];
+        }
+    }
+
+    // static analysis core functions
     public static function getHTMLErrors(string $in) : array {
         $tidy = new Tidy();
         $tidy->parseString($in, self::TIDY_CONFIG);
         return explode("\n", $tidy->errorBuffer);
     }
 
+    public static function getJSErrors(string $in) : array {
+        $js_header = file_get_contents(self::JS_HEADER_LOC);
+
+        $js_header_length = count(file(self::JS_HEADER_LOC)) - 1;
+
+        file_put_contents("tmp/tmp.js", $js_header.$in);
+
+        exec(self::JSHINT_LOCATION." tmp/tmp.js", $errors);
+
+        $errors = array_filter($errors, function($in) {
+            return preg_match("/tmp\/tmp.js/", $in);
+        });
+
+        $returnArr = Array();
+
+        foreach ($errors as $error) {
+            $error = preg_replace("/tmp\/tmp.js\: /", "", $error);
+            preg_match("/\d+/", $error, $matches); 
+            $line = $matches[0];
+            $line -= $js_header_length;
+            $error = preg_replace("/\d+/", $line, $error, 1);
+            $returnArr[] = $error;
+        }
+
+        return $returnArr;
+    }
+
+    public function specificProjectErrors(string $html, string $js, bool &$hasIssues) : array {
+        $errors = Array();
+        $text = $html.$js;
+        foreach (self::SPECIFIC_PAIR_CHECKS as $key => $value) {
+            if (strpos($text, $key) !== false) {
+                if (strpos($text, $value) === false) {
+                    $errors[] = Array($key, $value);
+                    $hasIssues = true;
+                }
+            }
+        }
+
+        if (count($errors) != 0) {
+            $arr = Array();
+            foreach ($errors as $error) {
+                $arr[] = "`".$error[0]."` was found without the associated `".$error[1]."`";
+            }
+            return $arr;
+        }
+        return Array();
+    }
+
+    // static analysis wrapper functions
     public static function getHTMLBodyErrors(string $in) : array {
         return self::getHTMLErrors("<!DOCTYPE html><head><title>null</title></head><body>".$in."</body></html>");
     }
 
+    // selenium core functions
     public function getSeleniumErrors(string $html) : array {
         // make sure we arent running bad stuff
         $html = preg_replace("/<applet[^>]+>.*?<\/applet>/is", "", $html);
@@ -230,6 +434,17 @@ class Bot {
         return $this->seleniumDriver->manage()->getLog("browser");
     }
 
+    protected function getSeleniumImage() : string {
+        if ($this->seleniumDriver->getCurrentUrl() != "file://".__DIR__."/tmp/tmp.html") {
+            throw new Exception("Unexpected redirect");
+        }
+
+        $this->seleniumDriver->takeScreenshot("tmp/tmp.png");
+
+        return $this->uploadImage("tmp/tmp.png");
+    }
+
+    // selenium wrapper functions
     public function getSeleniumErrorsFromBodyJSandCSS(string $body, string $js, string $css) : array {
         $html = file_get_contents("html_header.html");
 
@@ -248,6 +463,7 @@ class Bot {
         return $this->getSeleniumErrors($html);
     }
 
+    // selenium processing functions
     public static function processSeleniumErrors(array $errors, bool &$hasIssues, string $prefix="") {
         $path = "file://".__DIR__."/tmp/tmp.html";
 
@@ -269,12 +485,19 @@ class Bot {
         return $statement;
     }
 
-    public function getSeleniumImage() : string {
-        $this->seleniumDriver->takeScreenshot("tmp/tmp.png");
-
-        return $this->uploadImage("tmp/tmp.png");
+    protected function uploadImage(string $file) : string {
+        $fname = time().basename($file);
+        $newname = $this->imageRepoPath.$fname;
+        if (rename($file, $newname)) {
+            $this->imageRepo->stage();
+            $this->imageRepo->commit(time(), true);
+            return "https://github.com/".$this->imageRepoName."/blob/master/".$fname;
+        } else {
+            return "error";
+        }
     }
 
+    // issue code processing functions
     public function getCodepenStatement(array $issue, bool &$hasIssues) : string {
         $statement = "";
         if (preg_match_all("/http(s|)\:\/\/(www\.|)codepen\.io\/[a-zA-Z0-9\-]+\/(pen|details|full|pres)\/[a-zA-Z0-9]+/", $issue["body"], $codepens) && !preg_match("/xbzPQV/", $issue["body"])) {
@@ -904,55 +1127,7 @@ class Bot {
         return $statement."  \n";
     }
 
-    public static function getJSErrors(string $in) : array {
-        $js_header = file_get_contents(self::JS_HEADER_LOC);
-
-        $js_header_length = count(file(self::JS_HEADER_LOC)) - 1;
-
-        file_put_contents("tmp/tmp.js", $js_header.$in);
-
-        exec(self::JSHINT_LOCATION." tmp/tmp.js", $errors);
-
-        $errors = array_filter($errors, function($in) {
-            return preg_match("/tmp\/tmp.js/", $in);
-        });
-
-        $returnArr = Array();
-
-        foreach ($errors as $error) {
-            $error = preg_replace("/tmp\/tmp.js\: /", "", $error);
-            preg_match("/\d+/", $error, $matches); 
-            $line = $matches[0];
-            $line -= $js_header_length;
-            $error = preg_replace("/\d+/", $line, $error, 1);
-            $returnArr[] = $error;
-        }
-
-        return $returnArr;
-    }
-
-    public function specificProjectErrors(string $html, string $js, bool &$hasIssues) : array {
-        $errors = Array();
-        $text = $html.$js;
-        foreach (self::SPECIFIC_PAIR_CHECKS as $key => $value) {
-            if (strpos($text, $key) !== false) {
-                if (strpos($text, $value) === false) {
-                    $errors[] = Array($key, $value);
-                    $hasIssues = true;
-                }
-            }
-        }
-
-        if (count($errors) != 0) {
-            $arr = Array();
-            foreach ($errors as $error) {
-                $arr[] = "`".$error[0]."` was found without the associated `".$error[1]."`";
-            }
-            return $arr;
-        }
-        return Array();
-    }
-
+    // issue description analysis functions
     public function getEmptyBody(array $issue, bool &$hasIssues) : string {
         if (strlen($issue["body"]) === 0) {
             $statement  = "Your issue body is empty.  \n";
@@ -973,35 +1148,8 @@ class Bot {
         return "";
     }
 
-    public function getSimilarIssues(array $issue) : string {
-        $issue["title"] = strtolower($issue["title"]." ".$issue["body"]);
-        foreach (self::ISSUE_KEYEWORDS as $keyword) {
-            if (preg_match("/".preg_quote($keyword, "/")."/", $issue["title"])) {
-                $statement  = "Similar issues related to `".$keyword."`:  \n";
-                $similar = 0;
-                foreach ($this->closedIssues as $tmpIssue) {
-                    if (preg_match("/".preg_quote($keyword, "/")."/", $tmpIssue["title"]) && $similar < 15) {
-                        if ($tmpIssue["number"] != $issue["number"]) {
-                            $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
-                            $similar++;
-                        }
-                    }
-                }
-                foreach ($this->openIssues as $tmpIssue) {
-                    if (preg_match("/".preg_quote($keyword, "/")."/", $tmpIssue["title"]) && $similar < 15) {
-                        if ($tmpIssue["number"] != $issue["number"]) {
-                            $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
-                            $similar++;
-                        }
-                    }
-                }
-                return $statement;
-            }
-        }
-        return "No similar issues were found.  Please check that your issue has not yet been resolved elsewhere.  \n\n";
-    }
-
-    public function getFeatureLabel(array $issue) : string {
+    // issue label functions
+    public function checkFeatureLabel(array $issue) : string {
         $text = $issue["title"].$issue["body"];
         $text = strtolower($text);
 
@@ -1010,138 +1158,6 @@ class Bot {
             return "I have detected a feature request.  If this is wrong, please remove the `enhancement ".self::LABEL_SUFFIX."` label.  \n\n";
         }
         return "";
-    }
-
-    protected function analyzeIssue(array $issue) {
-        $start = microtime(true);
-
-        $hasIssues = false;
-
-        $statement  = "@".$issue["user"]["login"].",  \n";
-        $statement .= "Thank you for creating an issue!  \n\n";
-
-        $statement .= $this->getEmptyBody($issue, $hasIssues);
-        $statement .= $this->getUnfilledTemplate($issue, $hasIssues);
-        $statement .= $this->getCodepenStatement($issue, $hasIssues);
-        $statement .= $this->getJSFiddleStatement($issue, $hasIssues);
-        $statement .= $this->getMarkdownStatement($issue, $hasIssues);
-        $statement .= $this->getJSBinStatement($issue, $hasIssues);
-
-        if ($hasIssues) {
-            $statement .= "If the screenshot or log is extremely different from your version, it may be due to a missing dependency (jquery?) on either side.  \n";
-            $statement .= "  \n";
-            $statement .= "Please fix the above issues and re-write your example so we at ".self::PROJECT_NAME." can verify it’s a problem with the library and not with your code, and further proceed fixing your issue.  \n";
-            $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@".$this->username." reanalyze`.  (It may take a while for this to happen.)  \n";
-
-            $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
-        } else {
-            foreach ($issue["labels"] as $label) {
-                if ($label["name"] == "awaiting reply".self::LABEL_SUFFIX) {
-                    $this->githubClient->api("issue")->labels()->remove($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
-                    return;
-                }
-            }
-        }
-
-        $statement .= $this->getFeatureLabel($issue);
-        
-        $statement .= $this->getSimilarIssues($issue);
-        
-        $statement .= "  \n";
-        $statement .= self::BOT_ISSUE_FOOTER;
-
-        // reset browser
-        $this->seleniumDriver->get("about:blank");
-
-        $this->githubClient->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => htmlspecialchars($statement)));
-
-        echo "Issue ".$issue["number"]." has been analyzed and commented on in ".(microtime(true)-$start)."s.\n";
-
-        $this->imageRepo->push();
-    }
-
-    protected function reanalyzeIssues() {
-        foreach ($this->openIssues as $issue) {
-            $this->reanalyzeIssue($issue);
-        }
-    }
-
-    protected function reanalyzeIssue(array $issue) {
-        $start = microtime(true);
-
-        $comments = $this->githubPaginator->fetchAll($this->githubClient->api("issue")->comments(), "all", Array($this->repository[0], $this->repository[1], $issue["number"]));
-
-        $owner = $issue["user"]["login"];
-
-        $comments = array_reverse($comments);
-
-        for ($i=0; $i < count($comments); $i++) { 
-            if ($comments[$i]["user"]["login"] == $this->username) {
-                return;
-            }
-            if ($comments[$i]["user"]["login"] == $owner) {
-                if (preg_match("/@".strtolower($this->username)." reanalyze/", strtolower($comments[$i]["body"]))) {
-                    foreach ($comments as $comment) {
-                        if ($comment["user"]["login"] == $this->username) {
-                            if (preg_match("/(reanalyze|Thank you for creating an issue)/", $comment["body"])) {
-                                $this->githubClient->api('issue')->comments()->update($this->repository[0], $this->repository[1], $comment["id"], array('body' => "This comment is out of date.  See below for an updated analyzation."));
-                            }
-                        }
-                    }
-
-                    $hasIssues = false;
-
-                    $statement  = "@".$issue["user"]["login"].",  \n";
-                    $statement .= "Your code has been reanalyzed!  \n\n";
-
-                    $statement .= $this->getEmptyBody($issue, $hasIssues);
-                    $statement .= $this->getUnfilledTemplate($issue, $hasIssues);
-                    $statement .= $this->getCodepenStatement($issue, $hasIssues);
-                    $statement .= $this->getJSFiddleStatement($issue, $hasIssues);
-                    $statement .= $this->getMarkdownStatement($issue, $hasIssues);
-                    $statement .= $this->getJSBinStatement($issue, $hasIssues);
-
-                    if ($hasIssues) {
-                        $statement .= "If the screenshot or log is extremely different from your version, it may be due to a missing dependency (jquery?) on either side.  \n";
-                        $statement .= "  \n";
-                        $statement .= "Please fix the above issues and re-write your example so we at ".self::PROJECT_NAME." can verify it’s a problem with the library and not with your code, and further proceed fixing your issue.  \n";
-                        $statement .= "Once you have done so, please mention me with the reanalyze keyword: `@".$this->username." reanalyze`.  (It may take a while for this to happen.)  \n";
-
-                        $hasAwaitingLabel = false;
-                        foreach ($issue["labels"] as $label) {
-                            if ($label["name"] == "awaiting reply".self::LABEL_SUFFIX) {
-                                $hasAwaitingLabel = true;
-                            }
-                        }
-                        if (!$hasAwaitingLabel) {
-                            $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
-                        }
-                    } else {
-                        $statement .= "No issues were found!.  \n";
-                        foreach ($issue["labels"] as $label) {
-                            if ($label["name"] == "awaiting reply".self::LABEL_SUFFIX) {
-                                $this->githubClient->api("issue")->labels()->remove($this->repository[0], $this->repository[1], $issue["number"], "awaiting reply".self::LABEL_SUFFIX);
-                            }
-                        }
-                    }
-
-                    $statement .= $this->getSimilarIssues($issue);
-                    
-                    $statement .= "  \n";
-                    $statement .= self::BOT_ISSUE_FOOTER;
-
-                    // reset browser
-                    $this->seleniumDriver->get("about:blank");
-
-                    $this->githubClient->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => htmlspecialchars($statement)));
-
-                    echo "Issue ".$issue["number"]." has been reanalyzed in ".(microtime(true)-$start)."s.\n";
-
-                    $this->imageRepo->push();
-                    return;
-                }
-            }
-        }
     }
 
     protected function updatePRLabel(array $issue) {
@@ -1194,6 +1210,7 @@ class Bot {
         }
     }
 
+    // label wrapper functions
     protected function updateAllPRLabels() {
         foreach ($this->openIssues as $issue) {
             $this->updatePRLabel($issue);
@@ -1210,38 +1227,36 @@ class Bot {
         }
     }
 
-    protected function analyzeUnanalyzedIssues() {
-        $issues = $this->getUnanalyzedIssues();
-
-        foreach ($issues as $issue) {
-            $this->analyzeIssue($issue);
+    // other issue functions
+    public function getSimilarIssues(array $issue) : string {
+        $issue["title"] = strtolower($issue["title"]." ".$issue["body"]);
+        foreach (self::ISSUE_KEYEWORDS as $keyword) {
+            if (preg_match("/".preg_quote($keyword, "/")."/", $issue["title"])) {
+                $statement  = "Similar issues related to `".$keyword."`:  \n";
+                $similar = 0;
+                foreach ($this->closedIssues as $tmpIssue) {
+                    if (preg_match("/".preg_quote($keyword, "/")."/", $tmpIssue["title"]) && $similar < 15) {
+                        if ($tmpIssue["number"] != $issue["number"]) {
+                            $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                            $similar++;
+                        }
+                    }
+                }
+                foreach ($this->openIssues as $tmpIssue) {
+                    if (preg_match("/".preg_quote($keyword, "/")."/", $tmpIssue["title"]) && $similar < 15) {
+                        if ($tmpIssue["number"] != $issue["number"]) {
+                            $statement .= "* #".$tmpIssue["number"]." ".$tmpIssue["title"]."  \n";
+                            $similar++;
+                        }
+                    }
+                }
+                return $statement;
+            }
         }
-
-        $this->updateIssueCounter();
+        return "No similar issues were found.  Please check that your issue has not yet been resolved elsewhere.  \n\n";
     }
 
-    protected function updateIssueCounter() {
-        if (count($this->openIssues) != 0) {
-            $this->highestAnalyzedIssueNumber = $this->openIssues[0]["number"];
-        }
-    }
-
-    protected function reviewAllIssues() {
-        $this->highestAnalyzedIssueNumber = 0;
-        $this->updatePRs();
-        $this->updateAllPRLabels();
-        $this->analyzeUnanalyzedIssues();
-    }
-
-    public function __destruct() {
-        $this->seleniumDriver->quit();
-    }
-
-    public function kill() {
-        $this->seleniumDriver->quit();
-        $this->alive = false;
-    }
-
+    // maintenance functions
     protected function removeOldImages() {
         // DESTRUCTIVE!!!
         $files = glob($this->imageRepoPath."*tmp.png");
@@ -1269,6 +1284,16 @@ class Bot {
             git push --set-upstream origin master;  # fix upstream", $out);
         }
     }
+
+    // deconstruction functions
+    public function __destruct() {
+        $this->seleniumDriver->quit();
+    }
+
+    public function kill() {
+        $this->seleniumDriver->quit();
+        $this->alive = false;
+    }
 }
 
 if (isset($argv[1])) {
@@ -1294,7 +1319,7 @@ if (isset($argv[1])) {
                     break 2;
             }
         } catch (Exception $e) {
-            echo "THREAD QUIT WITH ERROR ".$e->getMessage()."...restarting\n";
+            echo "THREAD QUIT WITH ERROR ".var_dump($e, true)."...restarting\n";
         }
     }
 } else {
