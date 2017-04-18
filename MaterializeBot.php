@@ -1,24 +1,5 @@
 <?php
 
-/**
- * all that is left:
- *   support for more code hosting places (codepen, jsfiddle, markdown, and jsbin are supported)
- *   inactive issues
- *   refinement on html and js warnings (too verbose atm) but mostly good
- * It does the following
- *   extract code from codepen/jsfiddle/markdown
- *   find missing materialize
- *   find html errors in code
- *   find js console errors
- *   gives a temp (1 week) screenshot of the page on chrome with materialize known implemented correctly
- *   Static analysis JS errors too
- *   detects empty body and unfilled template
- *   shows similar issues based on keywords (biased towards closed ones)
- *   apply enhancement label if title contains "feature request" or "new feature"
- *   adds has-pr label automatically
- *   reanalyze issues per user request
- */
-
 define("DEBUG", true);
 
 if (DEBUG) {
@@ -40,9 +21,9 @@ class Bot {
     public const REANALYZE = 2;
 
     protected const TIDY_CONFIG = Array();
+    public const PROJECT_NAME = "materialize";
     protected const REQUIRED_JS_FILE = "/materialize\.(min\.)?js/";
     protected const REQUIRED_CSS_FILE = "/materialize\.(min\.)?css/";
-    public const PROJECT_NAME = "materialize";
     protected const LABEL_SUFFIX = " (bot)";
     protected const JS_HEADER_LOC = "jshint_header.js";
     protected const SLEEP_TIME = 10; // seconds
@@ -59,7 +40,10 @@ class Bot {
         "scrollspy" => ".scrollSpy(",
         "side-nav" => ".sideNav("
         );
+    protected const CODEDOWN_LOCATION = "/usr/local/bin/codedown";
+    protected const JSHINT_LOCATION = "/usr/local/bin/jshint";
     protected const STREAM_CONTEXT = Array("http" => Array("method" => "GET", "timeout" => 10));
+    
     public $alive=true;
     protected $githubClient, $githubPaginator, $seleniumDriver;
     public $repository;
@@ -233,6 +217,9 @@ class Bot {
         $statement = "";
 
         foreach ($errors as $error) {
+            if (strpos($error["message"], " - Failed to load resource: net::ERR_FILE_NOT_FOUND") !== false) {
+                $error["message"] = basename(substr($error["message"], 0, strpos($error["message"], " - Failed to load resource: net::ERR_FILE_NOT_FOUND")))." - Failed to load resource: net::ERR_FILE_NOT_FOUND";
+            }
             if ($error["level"] === "WARNING") {
                 $error = preg_replace("/".preg_quote($path, "/")."\s\d+\:\d+\s/", "", $error);
                 $statement .= "* ".$prefix." Console warning ".$error["message"]."  \n";
@@ -302,7 +289,7 @@ class Bot {
                 }
 
                 // Specific
-                $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+                $errors = self::specificProjectErrors($html, $js, $hasIssues);
 
                 foreach ($errors as $error) {
                     $statement .= "* ".$error."  \n";
@@ -376,7 +363,7 @@ class Bot {
                         $hasIssues = true;
                     }
 
-                    $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+                    $errors = self::specificProjectErrors($html, $js, $hasIssues);
 
                     foreach ($errors as $error) {
                         $statement .= "* Codepen [".$i."](".$link.") ".$error."  \n";
@@ -464,7 +451,7 @@ class Bot {
                     $hasIssues = true;
                 }
 
-                $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+                $errors = self::specificProjectErrors($html, $js, $hasIssues);
 
                 foreach ($errors as $error) {
                     $statement .= "* ".$error."  \n";
@@ -539,7 +526,7 @@ class Bot {
                         $hasIssues = true;
                     }
 
-                    $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+                    $errors = self::specificProjectErrors($html, $js, $hasIssues);
 
                     foreach ($errors as $error) {
                         $statement .= "* Fiddle [".$i."](".$link.") ".$error."  \n";
@@ -590,7 +577,7 @@ class Bot {
 
             file_put_contents("tmp/tmp.md", $issue["body"]."\n");
 
-            exec("/usr/local/bin/codedown html < tmp/tmp.md", $html);
+            exec(self::CODEDOWN_LOCATION." html < tmp/tmp.md", $html);
             $html = implode("\n", $html);
 
             if (preg_match("/<body>/", $html)) {
@@ -606,8 +593,8 @@ class Bot {
                 }
             }
 
-            exec("/usr/local/bin/codedown javascript < tmp/tmp.md", $js);
-            exec("/usr/local/bin/codedown js < tmp/tmp.md", $js);
+            exec(self::CODEDOWN_LOCATION." javascript < tmp/tmp.md", $js);
+            exec(self::CODEDOWN_LOCATION." js < tmp/tmp.md", $js);
             $js = implode("\n", $js);
 
             $errors = self::getJSErrors($js);
@@ -619,7 +606,7 @@ class Bot {
                 }
             }
 
-            $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+            $errors = self::specificProjectErrors($html, $js, $hasIssues);
             
             foreach ($errors as $error) {
                 if (strlen($error) != 0) {
@@ -628,7 +615,7 @@ class Bot {
                 }
             }
 
-            exec("/usr/local/bin/codedown css < tmp/tmp.md", $css);
+            exec(self::CODEDOWN_LOCATION." css < tmp/tmp.md", $css);
             $css = implode("\n", $css);
 
             try {
@@ -736,7 +723,7 @@ class Bot {
                     $hasIssues = true;
                 }
 
-                $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+                $errors = self::specificProjectErrors($html, $js, $hasIssues);
 
                 foreach ($errors as $error) {
                     $statement .= "* ".$error."  \n";
@@ -846,7 +833,7 @@ class Bot {
                         $hasIssues = true;
                     }
 
-                    $errors = self::specificPlatformErrors($html, $js, $hasIssues);
+                    $errors = self::specificProjectErrors($html, $js, $hasIssues);
 
                     foreach ($errors as $error) {
                         $statement .= "* Bin [".$i."](".$link.") ".$error."  \n";
@@ -894,7 +881,7 @@ class Bot {
 
         file_put_contents("tmp/tmp.js", $js_header.$in);
 
-        exec("/usr/local/bin/jshint tmp/tmp.js", $errors);
+        exec(self::JSHINT_LOCATION." tmp/tmp.js", $errors);
 
         $errors = array_filter($errors, function($in) {
             return preg_match("/tmp\/tmp.js/", $in);
@@ -914,7 +901,7 @@ class Bot {
         return $returnArr;
     }
 
-    public function specificPlatformErrors(string $html, string $js, bool &$hasIssues) : array {
+    public function specificProjectErrors(string $html, string $js, bool &$hasIssues) : array {
         $errors = Array();
         $text = $html.$js;
         foreach (self::SPECIFIC_PAIR_CHECKS as $key => $value) {
