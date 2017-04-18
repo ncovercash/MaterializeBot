@@ -1210,7 +1210,7 @@ class Bot {
         }
     }
 
-    // label wrapper functions
+    // label PR wrapper functions
     protected function updateAllPRLabels() {
         foreach ($this->openIssues as $issue) {
             $this->updatePRLabel($issue);
