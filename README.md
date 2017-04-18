@@ -324,7 +324,7 @@ This script is designed to easily start the bot.  Looking at it line by line:
 
 :1 - `echo "" > logs/bot.log` - empty the log file  
 :3 - `brew services...` - using homebrew, start or restart the selenium server.  This needs to be adapted for non-macOS environments  
-:5-9 - start the bot's threads in order, with 2s delay between each  
+:5-9 - start the bot's threads in order, all asynchronously, and all logging to logs/bot.log, with 2s delay between each  
 :11 - `trap ctrl_c INT` - trap ^C and run the ctrl_c function  
 :13 - `function ctrl_c() {` define ctrl_c function  
 :14 - `kill -2 -$PGID` - kill the php scripts with ^C  
