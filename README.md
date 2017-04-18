@@ -18,11 +18,12 @@ Table of Contents
 * [Examples](#examples)
 * [Dependency overview](#dependencies)
 * [Method Description](#method-description)
+* [Asynchronouns running and start script](#asynchronouns-running-and-start-script)
 
 Introduction
 ===
 
-This bot is designed to automatically analyze and manage issues in a GitHub repository under a "bot" account.  It can analyze many different code hosting platforms, including Codepen, JSFiddle, and markdown snippets.
+This bot is designed to automatically analyze and manage issues in a GitHub repository under a "bot" account.  It can analyze many different code hosting platforms, including Codepen, JSFiddle, and markdown snippets.  Additionally, it tests the code in a browser with selenium.
 
 Known Issues
 ===
@@ -85,7 +86,7 @@ Based on configurable keywords, the bot is able to search and return a list of, 
 
 ### Reanalyzation
 
-Without making a new issue, the owner can request the bot re-analyze their code using a simple command `@BotName reanalyze`.  This thread runs asynchrounously to the main one, allowing for new issues to take priority.
+Without making a new issue, the owner can request the bot re-analyze their code using a simple command `@BotName reanalyze`.  This thread runs asynchrounously to the main one, allowing for new issues to take priority.  Additionally, it edits its previous analyzation(s) to say "This comment is out of date. See below for an updated analyzation."
 
 ### Pull Request Detection
 
@@ -102,7 +103,7 @@ Through POSIX, this bot is able to run multiple threads simotaneously, allowing 
 Configuration
 ===
 
-There are 3 files which contain configuration files, listed in order of importance:
+There are 3 main files which contain configuration information, listed in order of importance:
 
 ### config.json
 
@@ -135,6 +136,7 @@ On line 3, the `DEBUG` constant is set.  Currently, this is only used for more i
 Inside the `Bot` class, there are many options:
 
 * `TIDY_CONFIG` - contains an array which is used for configuration of the Tidy utility.  [Options](tidy.sourceforge.net/docs/quickref.html)
+* `ISSUE_KEYEWORDS` - keywords to look for when searching for similar issues
 * `PROJECT_NAME` - lowercase name of the project this bot is used on
 * `REQUIRED_JS_FILE` - regex to match the JS file of the project you are using this bot on
 * `REQUIRED_CSS_FILE` - regex to match the CSS file of the project you are using this bot on
@@ -146,6 +148,11 @@ Inside the `Bot` class, there are many options:
 * `CODEDOWN_LOCATION` - location of the codedown binary
 * `JSHINT_LOCATION` - location of the jshint binary
 * `STREAM_CONTEXT["http"]["timeout"]` - timeout to wait on HTTP requests.
+* `UNFILLED_TEMPLATE_REGEX` - regex to match an unfilled issue template
+
+Any other blocks of text, such as "I'm a bot, bleep bloop" can be modified with a basic find command.
+
+## Additional files:
 
 ### html_header.html
 
@@ -162,21 +169,165 @@ Contains the javascript to prepend to statically analyzed JS.  Should contain yo
 Installation
 ===
 
+In order to install this bot, you must use a linux based or unix based system.  It may work on Windows, however additional modifications may be required.
 
+### Requirements
 
-Additionally, the `jshint` and `codedown` NPM programs, selenium webdriver server on default ports, and all composer requirements are needed to run this.
+* PHP >= 7.1 with tidy extension
+* composer
+* composer requirements
+  * knplabs/github-api
+  * php-http/guzzle6-adapter
+  * tburry/pquery
+  * facebook/webdriver
+  * cypresslab/gitelephant
+* jshint
+* codedown
+* Selenium webdriver server on port 4444
+* Google Chrome
+* git
+* GitHub repository for screenshots
 
-If you want to use this on a different project, here are the things you need to change:
+### Steps
 
-* config.php - contains repo information
-* jshint_header.js - contains javascript files to be included (excluding jquery) and jshint parameters
-* html_header.html - contains the top of the html document for selenium tests
-* html_footer.html - contains the bottom of the html document for selenium tests
-* MaterializeBot.php Bot::TIDY_CONFIG - tidy configuration options
-* MaterializeBot.php Bot::SPECIFIC_PAIR_CHECKS - checks errors specific to materialize, uses an array where if a key exists the value must too
-* MaterializeBot.php Bot::REQUIRED_CSS_FILE - file to check is implemented correctly in codepen/jsfiddle/etc.
-* MaterializeBot.php Bot::REQUIRED_JS_FILE - file to check is implemented correctly in codepen/jsfiddle/etc.
-* MaterializeBot.php Bot::PROJECT_NAME - name of project
-* MaterializeBot.php Bot::getUnfilledTemplate - checks errors specific to the issue template
+1. Install the above dependencies
+  * use `composer install` for composer dependencies
+2. Clone the github repository for screenshots
+3. Properly fill out the configuration files to suit your bot
+4. Run `./start.sh` in a terminal
+5. Done!
 
-Any other blocks of text are generic, and can be found with a simple find command.
+The bot will log to logs/bot.log, and output to the terminal.
+
+Usage
+===
+
+## Main Thread
+
+The main thread of the bot checks, by default, every 10 seconds if there are any newly opened issues.  If so, it iterates through them, extracts code snippets, analyzes them per the above information, and replys/labels the issue.  This is the highest priority thread and has the shortest sleep time.
+
+It can be run manually with the argument `main` or by creating an instance of `Bot` with `Bot::MAIN` as the second argument for the constructor.
+
+## PR Thread
+
+The PR thread of the bot checks, by default, every 100 seconds if there are any issues with PR numbers commented on them.  It does this by iterating over each issue's comments and checks for numbers with regex.  This is the lowest priority thread and has the longest sleep time.
+
+It can be run manually with the argument `pr` or by creating an instance of `Bot` with `Bot::HAS_PR` as the second argument for the constructor.
+
+## Reanalyzation Thread
+
+The reanalyzation thread of the bot checks, by default, every 60 seconds if there are any issues where the owner wishes to reanlyze the code.  If so, it analyzes the code per the above checks.  It does this by iterating over each issue's comments.
+
+It can be run manually with the argument `reanalyze` or by creating an instance of `Bot` with `Bot::REANALYZE` as the second argument for the constructor.
+
+Examples
+===
+
+Below are some issues which demonstrates the bot's usefulness:
+
+* https://github.com/smileytechguy/issueTesting/issues/82
+* https://github.com/smileytechguy/issueTesting/issues/80
+
+Dependency Overview
+===
+
+Here is what each dependency is used for:
+
+* tidy extension - html static analysis
+* composer - package management
+* composer requirements
+  * knplabs/github-api - connect to github for issues, comments, labels, etc
+  * php-http/guzzle6-adapter - helper for github-api
+  * tburry/pquery - static DOM analysis
+  * facebook/webdriver - selenium controller
+  * cypresslab/gitelephant - local git repo management
+* jshint - static JS analysis
+* codedown - extract markdown codeblocks
+* Selenium webdriver server on port 4444 - control chrome from PHP for runtime errors and screenshots
+* Google Chrome - used to render screenshots and get runtime errors
+* git - manage the screenshot repository 
+* GitHub repository for screenshots - hold screenshots from the bot
+
+Method description
+===
+
+* `public function __construct($repository, int $mode)` - constuct bot
+* `protected function initSelenium()` - kill selenium if running, and create new instance
+* `string protected function uploadImage(string $file)` - upload image to git repo from filename
+* `protected function loadConfig()` - authenticate, etc
+* `protected function refreshIssues()` - get new issues
+* `protected function updatePRs()` - get new PRs
+* `public function runMain()` - loop for main thread
+* `public function runPRLabel()` - loop for pr thread
+* `public function runReanalyze()` - loop for reanalyze thread
+* `array public function getUnanalyzedIssues()` - returns array of unanalyzed issues
+* `array public static function getHTMLErrors(string $in)` - gets html errors based off input
+* `array public static function getHTMLBodyErrors(string $in)` - gets html errors based off input that is only the `<body>` element
+* `array public function getSeleniumErrors(string $html)` - get errors through selenium based on input html
+* `array public function getSeleniumErrorsFromBodyJSandCSS(string $body, string $js, string $css)` - get errors through selenium based on input body, js, and css
+* `array public function getSeleniumErrorsFromHTMLJSandCSS(string $html, string $js, string $css)` - get errors through selenium based on input html, js, and css
+* `public static function processSeleniumErrors(array $errors, bool &$hasIssues, string $prefix="")` - formats selenium's error console format
+* `string public function getSeleniumImage()` - take screenshot of selenium browser
+* `string public function getCodepenStatement(array $issue, bool &$hasIssues)` - find and get issues from codepen
+* `string public function getJSFiddleStatement(array $issue, bool &$hasIssues)` - find and get issues from jsfiddle
+* `string public function getMarkdownStatement(array $issue, bool &$hasIssues)` - find and get issues from markdown snippets
+* `string public function getJSBinStatement(array $issue, bool &$hasIssues)` - find and get issues from jsbin
+* `array public static function getJSErrors(string $in)` - get errors from JS (static)
+* `array public function specificProjectErrors(string $html, string $js, bool &$hasIssues)` - get errors specific to the project
+* `string public function getEmptyBody(array $issue, bool &$hasIssues)` - get errors if issue body is empty
+* `string public function getUnfilledTemplate(array $issue, bool &$hasIssues)` - get errors if issue template is unfilled
+* `string public function getSimilarIssues(array $issue)` - get issues similar to this one based on keywords
+* `string public function getFeatureLabel(array $issue)` - get whether the issue is likely a feature request
+* `protected function analyzeIssue(array $issue)` - analyze issue
+* `protected function reanalyzeIssues()` - check if reanalyzing is needed on all open issues
+* `protected function reanalyzeIssue(array $issue)` - check if issue needs reanalyzing and if so reanalyze
+* `protected function updatePRLabel(array $issue)` - check has-pr status of issue
+* `protected function updateAllPRLabels()` - apply has-pr to all issues if they qualify
+* `protected function updateOpenPRLabels()` - apply has-pr to all open issues if they qualify
+* `protected function analyzeUnanalyzedIssues()` - analyze all open unanalyzed issues
+* `protected function updateIssueCounter()` - set the highest analyzed issue to the latest issue
+* `protected function reviewAllIssues()` - review all open issues
+* `public function __destruct()` - deconstructor, kills selenium
+* `public function kill()` - kills selenium, deconstructs
+* `protected function removeOldImages()` - removes images a week old from the image repository
+
+Asynchronouns running and start script
+===
+
+The contents of start.sh allow for asynchronous running of all threads independently:
+
+Additionally, it logs to logs/bot.log, and will restart 
+
+```shell
+echo "" > logs/bot.log
+
+brew services start selenium-server-standalone >> logs/bot.log 2>&1 || brew services restart selenium-server-standalone >> logs/bot.log 2>&1 
+
+php MaterializeBot.php main >> logs/bot.log 2>&1 &
+sleep 2
+php MaterializeBot.php pr >> logs/bot.log 2>&1 &
+sleep 2
+php MaterializeBot.php reanalyze >> logs/bot.log 2>&1 &
+
+trap ctrl_c INT
+
+function ctrl_c() {
+	kill -2 -$PGID
+	brew services restart selenium-server-standalone >> logs/bot.log 2>&1
+	exit 130
+}
+
+tail -f logs/bot.log
+```
+
+This script is designed to easily start the bot.  Looking at it line by line:
+
+:1 - `echo "" > logs/bot.log` - empty the log file  
+:3 - `brew services...` - using homebrew, start or restart the selenium server.  This needs to be adapted for non-macOS environments  
+:5-9 - start the bot's threads in order, with 2s delay between each  
+:11 - `trap ctrl_c INT` - trap ^C and run the ctrl_c function  
+:13 - `function ctrl_c() {` define ctrl_c function  
+:14 - `kill -2 -$PGID` - kill the php scripts with ^C  
+:15 - `brew services restart...` - restart selenium (close any straggling browsers left from the bot)  
+:16 - `exit 130` - exit with ^C exit code  
+:19 - `tail -f logs/bot.log` - output log infinitely until ^C
