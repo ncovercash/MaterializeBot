@@ -1,6 +1,6 @@
 # MaterializeBot
 
-Github issue management bot orignally designed for Dogfalo/Materialize, but available for open use on any GitHub repository.
+Github issue management bot orignally designed for Dogfalo/Materialize, but available for open use on any GitHub repository.  If you want to use it, see the [credit](#credit) section.
 
 Table of Contents
 ===
@@ -16,7 +16,7 @@ Table of Contents
   * [PR thread](#pr-thread)
   * [Reanalyzation thread](#reanalyzation-thread)
 * [Examples](#examples)
-* [Dependency overview](#dependencies)
+* [Dependency overview](#dependency-overview)
 * [Method Description](#method-description)
 * [Asynchronouns running and start script](#asynchronouns-running-and-start-script)
 * [Credit](#credit)
@@ -337,3 +337,7 @@ Credit
 
 Any repository is welcome to use this bot, I just ask that you let me know so I know how it's being used.  
 If you really need to, you can remove the string that says it was made by me.  The string is under `Bot::BOT_ISSUE_FOOTER`.
+
+Also, I couldn't have made this without the help of those in the materialize-devs chatroom, specifically @NonameSLdev, @fega, @tomscholz, and more.
+
+All the projects in the [dependency overview](#dependency-overview) were also invaluable in the development of this bot, they did a lot of the heavy lifting.
