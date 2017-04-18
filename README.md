@@ -251,45 +251,107 @@ Here is what each dependency is used for:
 Method description
 ===
 
+### Initialization functions
+
 * `public function __construct($repository, int $mode)` - constuct bot
-* `protected function initSelenium()` - kill selenium if running, and create new instance
-* `string protected function uploadImage(string $file)` - upload image to git repo from filename
 * `protected function loadConfig()` - authenticate, etc
+* `protected function initSelenium()` - kill selenium if running, and create new instance
+
+### Data reloading functions
+
 * `protected function refreshIssues()` - get new issues
 * `protected function updatePRs()` - get new PRs
+
+### Issue array wrapper functions
+
+* `public function getUnanalyzedIssues() : array` - returns array of unanalyzed issues
+
+### Core run functions
+
 * `public function runMain()` - loop for main thread
 * `public function runPRLabel()` - loop for pr thread
 * `public function runReanalyze()` - loop for reanalyze thread
-* `array public function getUnanalyzedIssues()` - returns array of unanalyzed issues
-* `array public static function getHTMLErrors(string $in)` - gets html errors based off input
-* `array public static function getHTMLBodyErrors(string $in)` - gets html errors based off input that is only the `<body>` element
-* `array public function getSeleniumErrors(string $html)` - get errors through selenium based on input html
-* `array public function getSeleniumErrorsFromBodyJSandCSS(string $body, string $js, string $css)` - get errors through selenium based on input body, js, and css
-* `array public function getSeleniumErrorsFromHTMLJSandCSS(string $html, string $js, string $css)` - get errors through selenium based on input html, js, and css
-* `public static function processSeleniumErrors(array $errors, bool &$hasIssues, string $prefix="")` - formats selenium's error console format
-* `string public function getSeleniumImage()` - take screenshot of selenium browser
-* `string public function getCodepenStatement(array $issue, bool &$hasIssues)` - find and get issues from codepen
-* `string public function getJSFiddleStatement(array $issue, bool &$hasIssues)` - find and get issues from jsfiddle
-* `string public function getMarkdownStatement(array $issue, bool &$hasIssues)` - find and get issues from markdown snippets
-* `string public function getJSBinStatement(array $issue, bool &$hasIssues)` - find and get issues from jsbin
-* `array public static function getJSErrors(string $in)` - get errors from JS (static)
-* `array public function specificProjectErrors(string $html, string $js, bool &$hasIssues)` - get errors specific to the project
-* `string public function getEmptyBody(array $issue, bool &$hasIssues)` - get errors if issue body is empty
-* `string public function getUnfilledTemplate(array $issue, bool &$hasIssues)` - get errors if issue template is unfilled
-* `string public function getSimilarIssues(array $issue)` - get issues similar to this one based on keywords
-* `string public function getFeatureLabel(array $issue)` - get whether the issue is likely a feature request
+
+### Issue analysis functions
+
 * `protected function analyzeIssue(array $issue)` - analyze issue
-* `protected function reanalyzeIssues()` - check if reanalyzing is needed on all open issues
+
+### Issue analysis wrapper functions
+
+* `protected function analyzeUnanalyzedIssues()` - analyze all open unanalyzed issues
+
+### Issue reanalysis functions
+
 * `protected function reanalyzeIssue(array $issue)` - check if issue needs reanalyzing and if so reanalyze
+
+### Issue reanalysis wrapper functions
+
+* `protected function reanalyzeIssues()` - check if reanalyzing is needed on all open issues
+
+### Generic functions
+
+* `protected function reviewAllIssues()` - review all open issues for everything, not recommended
+* `protected function updateIssueCounter()` - set the highest analyzed issue to the latest issue
+
+### Static analysis functions
+
+* `public static function getHTMLErrors(string $in) : array - gets html errors based off input
+* `public static function getJSErrors(string $in) : array` - get errors from JS (static)
+* `public function specificProjectErrors(string $html, string $js, bool &$hasIssues) : array` - get errors specific to the project
+
+### Static analysis wrapper functions
+
+* `public static function getHTMLBodyErrors(string $in) : array` - gets html errors based off input that is only the `<body>` element
+
+### Selenium core functions
+
+* `public function getSeleniumErrors(string $html) : array` - get errors through selenium based on input html
+* `string protected function getSeleniumImage()` - take screenshot of selenium browser
+
+### Selenium wrapper functions
+
+* `public function getSeleniumErrorsFromBodyJSandCSS(string $body, string $js, string $css) : array` - get errors through selenium based on input body, js, and css
+* `public function getSeleniumErrorsFromHTMLJSandCSS(string $html, string $js, string $css) : array` - get errors through selenium based on input html, js, and css
+
+### Selenium processing funtions
+
+* `public static function processSeleniumErrors(array $errors, bool &$hasIssues, string $prefix="")` - formats selenium's error console format
+* `string protected function uploadImage(string $file) : string` - upload image to git repo from filename
+
+### Issue code processing functions
+
+* `string public function getCodepenStatement(array $issue, bool &$hasIssues) : string` - find and get issues from codepen
+* `string public function getJSFiddleStatement(array $issue, bool &$hasIssues) : string` - find and get issues from jsfiddle
+* `string public function getMarkdownStatement(array $issue, bool &$hasIssues) : string` - find and get issues from markdown snippets
+* `string public function getJSBinStatement(array $issue, bool &$hasIssues) : string` - find and get issues from jsbin
+
+### Issue description analysis functions
+
+* `string public function getEmptyBody(array $issue, bool &$hasIssues) : string` - get errors if issue body is empty
+* `string public function getUnfilledTemplate(array $issue, bool &$hasIssues) : string` - get errors if issue template is unfilled
+
+### Issue label functions
+
+* `string public function checkFeatureLabel(array $issue) : string - get whether the issue is likely a feature request, and apply label if needed
 * `protected function updatePRLabel(array $issue)` - check has-pr status of issue
+
+### Issue PR label wrapper functions
+
 * `protected function updateAllPRLabels()` - apply has-pr to all issues if they qualify
 * `protected function updateOpenPRLabels()` - apply has-pr to all open issues if they qualify
-* `protected function analyzeUnanalyzedIssues()` - analyze all open unanalyzed issues
-* `protected function updateIssueCounter()` - set the highest analyzed issue to the latest issue
-* `protected function reviewAllIssues()` - review all open issues
+
+### Other issue analysis functions
+
+* `string public function getSimilarIssues(array $issue) : string` - get issues similar to this one based on keywords
+
+### Maintenance functions
+
+* `protected function removeOldImages()` - removes images a week old from the image repository
+
+### Deconstruction functions
+
 * `public function __destruct()` - deconstructor, kills selenium
 * `public function kill()` - kills selenium, deconstructs
-* `protected function removeOldImages()` - removes images a week old from the image repository
 
 Asynchronouns running and start script
 ===
