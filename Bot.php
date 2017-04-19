@@ -6,6 +6,9 @@ if (DEBUG) {
     error_reporting(E_ALL);
 }
 
+// load PlatformChecks
+require_once "PlatformCheck.php";
+
 // load libraries
 require_once "vendor/autoload.php";
 
@@ -19,6 +22,7 @@ class Bot {
     public const MAIN = 0;
     public const HAS_PR = 1;
     public const REANALYZE = 2;
+    public const AUTOCLOSE = 3;
 
     protected const TIDY_CONFIG = Array();
     protected const ISSUE_KEYEWORDS = Array("select", "input", "modal", "button", "dropdown", "navbar", "page", "tabs", "icon", "after", "sidenav", "side-nav", "menu", "meteor", "form", "color", "card", "collapsible", "image", "nav", "slider", "datepicker", "carousel", "parallax", "grid", "font", "table", "fab", "checkbox", "container", "overlay", "footer", "waves");
@@ -28,25 +32,18 @@ class Bot {
     protected const LABEL_SUFFIX = " (bot)";
     protected const JS_HEADER_LOC = "jshint_header.js";
     protected const SLEEP_TIME = 10; // seconds
-    // protected const SLEEP_TIME = 20; // seconds
     protected const SLEEP_TIME_PRS = 100; // seconds
-    // protected const SLEEP_TIME_PRS = 300; // seconds
     protected const SLEEP_TIME_REANALYZE = 60; // seconds
-    // protected const SLEEP_TIME_REANALYZE = 120; // seconds
-    protected const SPECIFIC_PAIR_CHECKS = Array(
-        "chips" => ".material_chip(",
-        "carousel" => ".carousel(",
-        "tap-target" => ".tapTarget(",
-        "parallax-container" => ".parallax(",
-        "scrollspy" => ".scrollSpy(",
-        "side-nav" => ".sideNav("
-        );
+    protected const SLEEP_TIME_AUTOCLOSE = 3600; // 1 hour
     protected const CODEDOWN_LOCATION = "/usr/local/bin/codedown";
     protected const JSHINT_LOCATION = "/usr/local/bin/jshint";
     protected const STREAM_CONTEXT = Array("http" => Array("method" => "GET", "timeout" => 10));
     protected const UNFILLED_TEMPLATE_REGEX = "/(Add a detailed description of your issue|Layout the steps to reproduce your issue.|Use this Codepen to demonstrate your issue.|xbzPQV|Add supplemental screenshots or code examples. Look for a codepen template in our Contributing Guidelines.)/";
     protected const BOT_ISSUE_FOOTER = "_I'm a bot, bleep, bloop. If there was an error, please let us know._  \n_Bot code at [smileytechguy/MaterializeBot](https://github.com/smileytechguy/MaterializeBot)_.  \n";
+    protected const DAYS_INACTIVE_TILL_CLOSE = 21;
+    protected const DAYS_INACTIVE_WARNING = 7;
     
+    protected $checks; // initialized in constructor
     public $alive=true;
     protected $githubClient, $githubPaginator, $seleniumDriver;
     public $repository;
@@ -59,6 +56,43 @@ class Bot {
 
     // initialization functions
     public function __construct($repository, int $mode) {
+        $this->checks = Array(
+            new SinglularDomCheck("`div.container` must exist directly under `<body>`, and only exist once", "body > div.container"),
+            new MultipleDomCheck("elements with the `col` class must be inside a `row`", ".col", ".row .col"),
+            new MultipleDomCheck("all `section`s must be inside the `container`", ".section", ".container .section"),
+            new MultipleDomCheck("the `responsive-img` class is only for use on `img` tags", ".responsive-img", "img.responsive-img"),
+            new MultipleDomCheck("the `circle` class is only for use on `img` tags", ".responsive-img", "img.responsive-img"),
+            new MultipleDomCheck("the `bordered` class is only for use on `table` tags", ".bordered", "table.bordered"),
+            new MultipleDomCheck("the `striped` class is only for use on `table` tags", ".striped", "table.striped"),
+            new MultipleDomCheck("the `highlight` class is only for use on `table` tags", ".highlight", "table.highlight"),
+            new MultipleDomCheck("the `responsive-table` class is only for use on `table` tags", ".responsive-table", "table.responsive-table"),
+            new MultipleDomCheck("`button` elements should have either a `btn`, `btn-large`, or `fixed-action-btn` class", "button", "button.btn, button.btn-large, button.fixed-action-btn"),
+            new MultipleDomCheck("`.card-action` elements should be inside a `.card` or `.card-panel`", ".card-action", ".card .card-action, .card-panel .card-action"),
+            new MultipleDomCheck("`.card-title` elements should be inside a `.card` or `.card-panel`", ".card-title", ".card .card-title, .card-panel .card-title"),
+            new MultipleDomCheck("`.card-content` elements should be inside a `.card` or `.card-panel`", ".card-content", ".card .card-content, .card-panel .card-content"),
+            new MultipleDomCheck("`.card-image` elements should be inside a `.card` or `.card-panel`", ".card-image", ".card .card-image, .card-panel .card-image"),
+            new MultipleDomCheck("`.card-stacked` elements should be inside a `.card` or `.card-panel`", ".card-stacked", ".card .card-stacked, .card-panel .card-stacked"),
+            new MultipleDomCheck("`.card-reveal` elements should be inside a `.card` or `.card-panel`", ".card-reveal", ".card .card-reveal, .card-panel .card-reveal"),
+            new MultipleDomCheck("`.card-tabs` elements should be inside a `.card` or `.card-panel`", ".card-tabs", ".card .card-tabs, .card-panel .card-tabs"),
+            new MultipleDomCheck("`.tab`s in a `.card` or `.card-panel` should have a `.card-tabs` wrapper", ".card .tab, .card-panel .tab", ".card .card-tabs .tab, .card-panel .card-tabs .tab"),
+            new DomJSCheck("`.chip`s must be initialized using the `material_chip` prototype function", ".chip", ".material_chip("),
+            new MultipleDomCheck("`.collection-item`s must be a direct child of a `.collection`", ".collection-item", ".collection > .collection-item"),
+            new MultipleDomCheck("`.collection-header`s must be a direct child of a `.collection`", ".collection-header", ".collection > .collection-header"),
+            new MultipleDomCheck("`.collection-header`s must be a direct child of a `.collection` with the `with-header` class", ".collection-header", ".collection.with-header > .collection-header"),
+            new MultipleDomCheck("`.footer-copyright`s must be a direct child of a `footer.page-footer`", ".footer-copyright", "footer.page-footer > .footer-copyright"),
+            new MultipleDomCheck("`footer.page-footer` and `.footer-copyright` elements must contain a `.container`", ".footer-copyright, footer.page-footer", ".footer-copyright > .container, footer.page-footer > .container"),
+            new SingularOrNonexistentDomCheck("There can only be one `footer`", "footer"),
+            new SingularOrNonexistentDomCheck("There can only be one `header` element", "header"),
+            new MultipleDomCheck("`.input-fields` must contain exactly one `label` and a `input`, `textarea`, or `select`", ".input-field", ".input-field label", ".input-field input, .input-field textarea, .input-field select"),
+            new MultipleDomCheck("`range` inputs must be inside a `.range-field` element", "input[type=range]", ".range-field input[type=range]"),
+            new MultipleDomCheck("`textarea`s should have the `materialize-textarea` class", "textarea", "textarea.materialize-textarea"),
+            new MultipleDomCheck("icons should have the `material-icons` class", "i", "i.material-icons"),
+            new DomJSCheck("`input.datepicker`s must be initialized using the `pickadate` prototype function", "input.datepicker", ".pickadate("),
+            new DomJSCheck("`input.autocomplete`s must be initialized using the `autocomplete` prototype function", "input.autocomplete", ".autocomplete("),
+            new MultipleDomCheck("fixed navbars should match the `.navbar-fixed > nav > .nav-wrapper` selector", ".navbar-fixed > nav > .nav-wrapper", ".navbar-fixed"),
+            new DomJSCheck("`.side-nav`s must be initialized using the `sideNav` prototype function", ".side-nav", ".sideNav("),
+        );
+
         $this->repository = $repository;
 
         $this->githubClient = new \Github\Client();
@@ -82,6 +116,12 @@ class Bot {
             case self::REANALYZE:
                 $this->initSelenium();
                 $this->runReanalyze();
+                break;
+            case self::AUTOCLOSE:
+                $this->runAutoclose();
+                break;
+            default:
+                die("Bad thread name specified");
         }
     }
 
@@ -114,7 +154,7 @@ class Bot {
             "profile.default_content_setting_values.plugins" => 2
         );
 
-        $options->setExperimentalOption('prefs', $prefs);
+        $options->setExperimentalOption("prefs", $prefs);
 
         $desiredCapabilities = \Facebook\WebDriver\Remote\DesiredCapabilities::chrome();
         $desiredCapabilities->setCapability(\Facebook\WebDriver\Chrome\ChromeOptions::CAPABILITY, $options);
@@ -190,6 +230,16 @@ class Bot {
             $this->reanalyzeIssues();
             
             sleep(self::SLEEP_TIME_REANALYZE);
+        }
+    }
+
+    public function runAutoclose() {
+        while ($this->alive) {
+            $this->refreshIssues();
+
+            $this->autocloseIssues();
+            
+            sleep(self::SLEEP_TIME_AUTOCLOSE);
         }
     }
 
@@ -272,7 +322,7 @@ class Bot {
                     foreach ($comments as $comment) {
                         if ($comment["user"]["login"] == $this->username) {
                             if (preg_match("/(reanalyze|Thank you for creating an issue)/", $comment["body"])) {
-                                $this->githubClient->api('issue')->comments()->update($this->repository[0], $this->repository[1], $comment["id"], array('body' => "This comment is out of date.  See below for an updated analyzation."));
+                                $this->githubClient->api("issue")->comments()->update($this->repository[0], $this->repository[1], $comment["id"], array("body" => "This comment is out of date.  See below for an updated analyzation."));
                             }
                         }
                     }
@@ -339,6 +389,82 @@ class Bot {
         }
     }
 
+    // issue autoclose functions
+    protected function autocloseIssue(array $issue) {
+        foreach ($issue["labels"] as $label) {
+            if ($label["name"] == "has-pr".self::LABEL_SUFFIX || $label["name"] == "has-pr") {
+                return;
+            }
+        }
+
+        $comments = $this->githubPaginator->fetchAll($this->githubClient->api("issue")->comments(), "all", Array($this->repository[0], $this->repository[1], $issue["number"]));
+
+        foreach ($issue["labels"] as $label) {
+            if ($label["name"] == "autoclose pending") {
+                if ($comments[count($comments)-1]["user"]["login"] != $this->username) {
+                    $this->githubClient->api("issue")->labels()->remove($this->repository[0], $this->repository[1], $issue["number"], "autoclose pending");
+                    return;
+                }
+
+                $lastUpdated = new DateTime($comments[count($comments)-1]["updated_at"]);
+
+                $lastUpdated->add(new DateInterval("P".self::DAYS_INACTIVE_WARNING."D"));
+
+                $now = new DateTime();
+
+                $diff = $lastUpdated->diff($now);
+
+                if ($diff->format("%R") == "+") {
+                    // issue needs to be autoclosed
+                    $statement  = "@".$issue["user"]["login"].",  \n";
+                    $statement .= "This issue has been automatically closed due to inactivity.  \n  \n";
+                    $statement .= self::BOT_ISSUE_FOOTER;
+
+                    $this->githubClient->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => htmlspecialchars($statement)));
+
+                    $this->githubClient->api("issue")->labels()->remove($this->repository[0], $this->repository[1], $issue["number"], "autoclose pending");
+                    
+                    $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "autoclosed");
+
+                    $this->githubClient->api("issue")->update($this->repository[0], $this->repository[1], $issue["number"], array("state" => "closed"));
+
+                    echo "Autoclosing issue #".$issue["number"]."\n";
+                }
+
+                return;
+            }
+        }
+
+        $lastUpdated = new DateTime($issue["updated_at"]);
+
+        $lastUpdated->add(new DateInterval("P".self::DAYS_INACTIVE_TILL_CLOSE."D"));
+
+        $now = new DateTime();
+
+        $diff = $lastUpdated->diff($now);
+
+        if ($diff->format("%R") == "+") {
+            // issue needs to be autoclosed
+            $statement  = "@".$issue["user"]["login"].",  \n";
+            $statement .= "This issue has been inactive for ".self::DAYS_INACTIVE_TILL_CLOSE." days.  \n";
+            $statement .= "It will be automatically closed unless any new comments are added within the next ".self::DAYS_INACTIVE_WARNING." days, or the `autoclose pending` label is removed.  \n  \n";
+            $statement .= self::BOT_ISSUE_FOOTER;
+
+            $this->githubClient->api("issue")->comments()->create($this->repository[0], $this->repository[1], $issue["number"], array("body" => htmlspecialchars($statement)));
+
+            $this->githubClient->api("issue")->labels()->add($this->repository[0], $this->repository[1], $issue["number"], "autoclose pending");
+
+            echo "Warning issue #".$issue["number"]." of autoclose\n";
+        }
+    }
+
+    // issue autoclose wrapper functions
+    protected function autocloseIssues() {
+        foreach ($this->openIssues as $issue) {
+            $this->autocloseIssue($issue);
+        }
+    }
+
     // generic functions
     protected function reviewAllIssues() {
         $this->highestAnalyzedIssueNumber = 0;
@@ -388,25 +514,13 @@ class Bot {
     }
 
     public function specificProjectErrors(string $html, string $js, bool &$hasIssues) : array {
-        $errors = Array();
-        $text = $html.$js;
-        foreach (self::SPECIFIC_PAIR_CHECKS as $key => $value) {
-            if (strpos($text, $key) !== false) {
-                if (strpos($text, $value) === false) {
-                    $errors[] = Array($key, $value);
-                    $hasIssues = true;
-                }
+        $arr = Array();
+        foreach (self::CHECKS as $check) {
+            if (!$check->test($html=$html, $js=$js)) {
+                $arr[] = $check->getExplaination();
             }
         }
-
-        if (count($errors) != 0) {
-            $arr = Array();
-            foreach ($errors as $error) {
-                $arr[] = "`".$error[0]."` was found without the associated `".$error[1]."`";
-            }
-            return $arr;
-        }
-        return Array();
+        return $arr;
     }
 
     // static analysis wrapper functions
@@ -1300,14 +1414,17 @@ if (isset($argv[1])) {
     while (true) {
         try {
             switch ($argv[1]) {
-                case 'main':
+                case "main":
                     new Bot($repository, Bot::MAIN);
                     break;
-                case 'pr':
+                case "pr":
                     new Bot($repository, Bot::HAS_PR);
                     break;
-                case 'reanalyze':
+                case "reanalyze":
                     new Bot($repository, Bot::REANALYZE);
+                    break;
+                case "autoclose":
+                    new Bot($repository, Bot::AUTOCLOSE);
                     break;
                 default:
                     echo "Usage: php ".basename(__FILE__)." mode\n";
@@ -1316,8 +1433,12 @@ if (isset($argv[1])) {
                     echo "  main - main thread, for initial issue analyzation.\n";
                     echo "  pr - pr thread, for has-pr label.\n";
                     echo "  reanalyze - reanalyze issues.\n";
+                    echo "  autoclose - autoclose inactive issues.\n";
                     break 2;
             }
+        } catch (\Http\Client\Exception\NetworkException $e) {
+            echo "Thread quit with network error...restarting in 30s\n";
+            sleep(30);
         } catch (Exception $e) {
             echo "THREAD QUIT WITH ERROR ".var_dump($e, true)."...restarting\n";
         }
@@ -1329,4 +1450,5 @@ if (isset($argv[1])) {
     echo "  main - main thread, for initial issue analyzation.\n";
     echo "  pr - pr thread, for has-pr label.\n";
     echo "  reanalyze - reanalyze issues.\n";
+    echo "  autoclose - autoclose inactive issues.\n";
 }

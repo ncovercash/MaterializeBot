@@ -1,4 +1,4 @@
-# MaterializeBot
+# GHBot
 
 Github issue management bot orignally designed for Dogfalo/Materialize, but available for open use on any GitHub repository.  If you want to use it, see the [credit](#credit) section.
 
@@ -15,9 +15,12 @@ Table of Contents
   * [Main thread](#main-thread)
   * [PR thread](#pr-thread)
   * [Reanalyzation thread](#reanalyzation-thread)
+  * [Autoclose thread](#autoclose-thread)
 * [Examples](#examples)
 * [Dependency overview](#dependency-overview)
-* [Method Description](#method-description)
+* [Method and Class Description](#method-and-class-description)
+  * [Bot class](#bot_class)
+  * [PlatformCheck extensions](#platformcheck_extensions)
 * [Asynchronouns running and start script](#asynchronouns-running-and-start-script)
 * [Credit](#credit)
 
@@ -35,9 +38,7 @@ Known Issues
 Planned Features
 ===
 
-* Issue auto-closing after a specified time (see #8)
 * Support for more platforms for code analyzation (see #1)
-* Dom project-specific checks
 
 Capabilities
 ===
@@ -65,7 +66,7 @@ JSHint is a popular static analysis tool for the javascript language.  It can de
 
 #### Specific Project Checks
 
-Preloaded with materialize definitions, these checks are able to check basic associations within code.  These are typically to ensure proper initialization.
+Preloaded with materialize definitions, but fully customizable, these checks are able to check advanced associations within code.  These are typically to ensure proper initialization and html structure.  These can be specified through the `PlatformCheck class`.
 
 #### Runtime Console Warnings and Errors
 
@@ -73,7 +74,7 @@ Additionally, the provided code is run in the latest Google Chrome build using S
 
 #### Inclusion-related Error Detection
 
-On most platforms, the bot is able to detect when Materialize, or another configurable library is not included.  This prevents errors where the library isn't properly included in the demo.
+On most platforms, the bot is able to detect when a configurable library is not included.  This prevents errors where the library isn't properly included in the demo.
 
 ### Screenshots
 
@@ -88,6 +89,10 @@ Based on configurable keywords, the bot is able to search and return a list of, 
 ### Reanalyzation
 
 Without making a new issue, the owner can request the bot re-analyze their code using a simple command `@BotName reanalyze`.  This thread runs asynchrounously to the main one, allowing for new issues to take priority.  Additionally, it edits its previous analyzation(s) to say "This comment is out of date. See below for an updated analyzation."
+
+### Auto closure
+
+The bot can automatically close issues after a certain period of inactivity has elapsed.
 
 ### Pull Request Detection
 
@@ -118,8 +123,8 @@ This file is a simple JSON file containing 4 keys:
 Below is a sample:
 
 ```json
-{ "gh_username": "MaterializeBot", "gh_password": "REDACTED",
-  "image_repo" : "MaterializeBot/IssueImages", "image_repo_path": "IssueImages/" }
+{ "gh_username": "GHBot", "gh_password": "REDACTED",
+  "image_repo" : "GHBot/IssueImages", "image_repo_path": "IssueImages/" }
 ```
 
 ### config.php
@@ -128,7 +133,7 @@ Contains 1 variable, `$repository`, which is an array.
 
 `$repository[0]` is the owner of the repository, and `$repository[1]` is the name of the repository.
 
-### MaterializeBot.php
+### Bot.php
 
 Inside the PHP file itself are many more in-depth configuration options.  These should be condensed into a separate file, but, here we are.
 
@@ -142,15 +147,18 @@ Inside the `Bot` class, there are many options:
 * `REQUIRED_JS_FILE` - regex to match the JS file of the project you are using this bot on
 * `REQUIRED_CSS_FILE` - regex to match the CSS file of the project you are using this bot on
 * `LABEL_SUFFIX` - suffix to append to labels in order to distinguish from human applied labels at a glance
-* `SLEEP_TIME` - Time to sleep between iterations of the main thread of the bot.  Should be lower than the 2 below.
+* `SLEEP_TIME` - Time to sleep between iterations of the `main` thread of the bot.  Should be lower than the others.
 * `SLEEP_TIME_PRS` - Time to sleep between iterations of the `has-pr` thread of the bot.
 * `SLEEP_TIME_REANALYZE` - Time to sleep between iterations of the `reanalyze` thread of the bot.
-* `SPECIFIC_PAIR_CHECKS` - Contains key/value pairs, where if the key exists the value must exist too.
+* `SLEEP_TIME_AUTOCLOSE` - Time to sleep between iterations of the `autoclose` thread of the bot.
 * `CODEDOWN_LOCATION` - location of the codedown binary
 * `JSHINT_LOCATION` - location of the jshint binary
 * `STREAM_CONTEXT["http"]["timeout"]` - timeout to wait on HTTP requests.
 * `UNFILLED_TEMPLATE_REGEX` - regex to match an unfilled issue template
 * `BOT_ISSUE_FOOTER` - footer left at the bottom of each issue.  Default contains attribution to me and a bot notice.
+* `DAYS_INACTIVE_TILL_CLOSE` - Number of days till an issue is autoclosed.
+* `DAYS_INACTIVE_WARNING` - Number of days to wait after the bot has issued a warning
+* `$checks` - Contains instances of the PlatformCheck class for advanced checks.  Information about these checks is [here](#checks)
 
 Any other blocks of text can be modified with a basic find command.
 
@@ -220,6 +228,17 @@ The reanalyzation thread of the bot checks, by default, every 60 seconds if ther
 
 It can be run manually with the argument `reanalyze` or by creating an instance of `Bot` with `Bot::REANALYZE` as the second argument for the constructor.
 
+## Autoclose Thread
+
+The autoclose thread of the bot checks, by default, once an hour for inactive issues.  If it finds one which has not been updated in a configurable time, then it will close it.
+
+It can be run manually with the argument `autoclose` or by creating an instance of `Bot` with `Bot::AUTOCLOSE` as the second argument for the constructor.
+
+Checks
+===
+
+The `PlatformCheck` abstract class has many extensions, and is easy to add additional functionality.
+
 Examples
 ===
 
@@ -248,8 +267,10 @@ Here is what each dependency is used for:
 * git - manage the screenshot repository 
 * GitHub repository for screenshots - hold screenshots from the bot
 
-Method description
+Method and class description
 ===
+
+## Bot class
 
 ### Initialization functions
 
@@ -271,6 +292,7 @@ Method description
 * `public function runMain()` - loop for main thread
 * `public function runPRLabel()` - loop for pr thread
 * `public function runReanalyze()` - loop for reanalyze thread
+* `public function runAutoclose()` - loop for autoclose thread
 
 ### Issue analysis functions
 
@@ -287,6 +309,14 @@ Method description
 ### Issue reanalysis wrapper functions
 
 * `protected function reanalyzeIssues()` - check if reanalyzing is needed on all open issues
+
+### Issue autoclose functions
+
+* `protected function autocloseIssue(array $issue)` - attempt to autoclose issue if needed
+
+### Issue autoclose wrapper functions
+
+* `protected function autocloseIssues()` - attempt to autoclose all open issues
 
 ### Generic functions
 
@@ -353,6 +383,17 @@ Method description
 * `public function __destruct()` - deconstructor, kills selenium
 * `public function kill()` - kills selenium, deconstructs
 
+## PlatformCheck extensions
+
+Create these with the format `(string $explaination, string ...$checks)` unless otherwise specified
+
+* `ExistsDomCheck` - returns true if the check is in the DOM at least once
+* `SingularOrNonexistentDomCheck` - returns true if the element appears once or not at all
+* `SingularDomCheck` - returns true if the check is in the DOM exactly once
+* `MultipleDomCheck` - returns true if the same number of elements are in each check (e.g. input in wrappers, etc)
+* `DomJSCheck` - returns true if the DOM check doesnt exist or the DOM check exists and the JS check also exists
+* `JSDomCheck` - returns true if the JS check doesnt exist or the JS check exists and the DOM check also exists
+
 Asynchronouns running and start script
 ===
 
@@ -365,11 +406,13 @@ echo "" > logs/bot.log
 
 brew services start selenium-server-standalone >> logs/bot.log 2>&1 || brew services restart selenium-server-standalone >> logs/bot.log 2>&1 
 
-php MaterializeBot.php main >> logs/bot.log 2>&1 &
+php Bot.php main >> logs/bot.log 2>&1 &
 sleep 2
-php MaterializeBot.php pr >> logs/bot.log 2>&1 &
+php Bot.php pr >> logs/bot.log 2>&1 &
 sleep 2
-php MaterializeBot.php reanalyze >> logs/bot.log 2>&1 &
+php Bot.php reanalyze >> logs/bot.log 2>&1 &
+sleep 2
+php Bot.php inactive >> logs/bot.log 2>&1 &
 
 trap ctrl_c INT
 
@@ -386,13 +429,13 @@ This script is designed to easily start the bot.  Looking at it line by line:
 
 :1 - `echo "" > logs/bot.log` - empty the log file  
 :3 - `brew services...` - using homebrew, start or restart the selenium server.  This needs to be adapted for non-macOS environments  
-:5-9 - start the bot's threads in order, all asynchronously, and all logging to logs/bot.log, with 2s delay between each  
-:11 - `trap ctrl_c INT` - trap ^C and run the ctrl_c function  
-:13 - `function ctrl_c() {` define ctrl_c function  
-:14 - `kill -2 -$PGID` - kill the php scripts with ^C  
-:15 - `brew services restart...` - restart selenium (close any straggling browsers left from the bot)  
-:16 - `exit 130` - exit with ^C exit code  
-:19 - `tail -f logs/bot.log` - output log infinitely until ^C
+:5-11 - start the bot's threads in order, all asynchronously, and all logging to logs/bot.log, with 2s delay between each  
+:13 - `trap ctrl_c INT` - trap ^C and run the ctrl_c function  
+:15 - `function ctrl_c() {` define ctrl_c function  
+:16 - `kill -2 -$PGID` - kill the php scripts with ^C  
+:17 - `brew services restart...` - restart selenium (close any straggling browsers left from the bot)  
+:18 - `exit 130` - exit with ^C exit code  
+:21 - `tail -f logs/bot.log` - output log infinitely until ^C
 
 Credit
 ===
