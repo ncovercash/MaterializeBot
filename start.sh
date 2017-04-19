@@ -13,9 +13,9 @@ php Bot.php autoclose >> logs/bot.log 2>&1 &
 trap ctrl_c INT
 
 function ctrl_c() {
-	kill -2 -$PGID
-	brew services restart selenium-server-standalone >> logs/bot.log 2>&1
-	exit 130
+    kill -2 -$PGID
+    brew services restart selenium-server-standalone >> logs/bot.log 2>&1
+    exit 130
 }
 
 tail -f logs/bot.log
