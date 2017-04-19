@@ -18,7 +18,7 @@ abstract class PlatformCheck {
 	}
 
 	public function getExplaination() : string {
-		return $str;
+		return $this->str;
 	}
 
 	public function __toString() : string {

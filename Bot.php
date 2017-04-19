@@ -515,7 +515,7 @@ class Bot {
 
     public function specificProjectErrors(string $html, string $js, bool &$hasIssues) : array {
         $arr = Array();
-        foreach (self::CHECKS as $check) {
+        foreach ($this->checks as $check) {
             if (!$check->test($html=$html, $js=$js)) {
                 $arr[] = $check->getExplaination();
             }
@@ -1255,7 +1255,7 @@ class Bot {
     public function getUnfilledTemplate(array $issue, bool &$hasIssues) : string {
         if (preg_match(self::UNFILLED_TEMPLATE_REGEX, $issue["body"])) {
             $statement  = "You have not filled out part of our issue template.  \n";
-            $statement .= "Please fill in the template in order to allow us to quickly categorize and resolve the issue.  \n  \n";
+            $statement .= "Please fill in the template and remove the instructions in order to allow us to quickly categorize and resolve the issue.  \n  \n";
             $hasIssues = true;
             return $statement;
         }
