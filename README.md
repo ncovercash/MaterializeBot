@@ -21,7 +21,7 @@ Table of Contents
 * [Method and Class Description](#method-and-class-description)
   * [Bot class](#bot_class)
   * [PlatformCheck extensions](#platformcheck_extensions)
-* [Asynchronouns running and start script](#asynchronouns-running-and-start-script)
+* [Asynchronous running and start script](#asynchronous-running-and-start-script)
 * [Credit](#credit)
 
 Introduction
