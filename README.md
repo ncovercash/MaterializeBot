@@ -1,4 +1,4 @@
-# GHBot
+# GitHubBot
 
 Github issue management bot orignally designed for Dogfalo/Materialize, but available for open use on any GitHub repository.  If you want to use it, see the [credit](#credit) section.
 
