@@ -28,7 +28,7 @@ abstract class PlatformCheck {
 
 class ExistsDomCheck extends PlatformCheck {
 	public function __construct(string $explaination, string $check) {
-		parent::__construct($check);
+		$this->checks = Array($check);
 		$this->setExplaination($explaination);
 	}
 
@@ -41,12 +41,14 @@ class ExistsDomCheck extends PlatformCheck {
 
 class SingularOrNonexistentDomCheck extends PlatformCheck {
 	public function __construct(string $explaination, string $check) {
-		parent::__construct($check);
+		$this->checks = Array($check);
 		$this->setExplaination($explaination);
 	}
 
 	public function test(string $html="", string $js="") : bool {
 		$dom = pQuery::parseStr($html);
+
+		var_dump($this->checks);
 
 		return count($dom->query($this->checks[0])) <= 1;
 	}
@@ -54,7 +56,7 @@ class SingularOrNonexistentDomCheck extends PlatformCheck {
 
 class SingularDomCheck extends PlatformCheck {
 	public function __construct(string $explaination, string $check) {
-		parent::__construct($check);
+		$this->checks = Array($check);
 		$this->setExplaination($explaination);
 	}
 
@@ -81,7 +83,7 @@ class MultipleDomCheck extends PlatformCheck {
 
 class DomJSCheck extends PlatformCheck {
 	public function __construct(string $explaination, string $domCheck, string $jsCheck) {
-		parent::__construct($domCheck, $jsCheck);
+		$this->checks = Array($domCheck, $jsCheck);
 		$this->setExplaination($explaination);
 	}
 
@@ -97,7 +99,7 @@ class DomJSCheck extends PlatformCheck {
 
 class JSDomCheck extends PlatformCheck {
 	public function __construct(string $explaination, string $jsCheck, string $domCheck) {
-		parent::__construct($jsCheck, $domCheck);
+		$this->checks = Array($jsCheck, $domCheck);
 		$this->setExplaination($explaination);
 	}
 

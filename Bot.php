@@ -25,7 +25,7 @@ class Bot {
     public const AUTOCLOSE = 3;
 
     protected const TIDY_CONFIG = Array();
-    protected const ISSUE_KEYEWORDS = Array("select", "input", "modal", "button", "dropdown", "navbar", "page", "tabs", "icon", "after", "sidenav", "side-nav", "menu", "meteor", "form", "color", "card", "collapsible", "image", "nav", "slider", "datepicker", "carousel", "parallax", "grid", "font", "table", "fab", "checkbox", "container", "overlay", "footer", "waves");
+    protected const ISSUE_KEYEWORDS = Array("select", "input", "modal", "button", "dropdown", "navbar", "tabs", "icon", "after", "sidenav", "side-nav", "menu", "meteor", "form", "color", "card", "collapsible", "image", "nav", "slider", "datepicker", "carousel", "parallax", "grid", "font", "table", "fab", "checkbox", "container", "overlay", "footer", "waves");
     public const PROJECT_NAME = "materialize";
     protected const REQUIRED_JS_FILE = "/materialize\.(min\.)?js/";
     protected const REQUIRED_CSS_FILE = "/materialize\.(min\.)?css/";
@@ -57,7 +57,7 @@ class Bot {
     // initialization functions
     public function __construct($repository, int $mode) {
         $this->checks = Array(
-            new SingularDomCheck("`div.container` must exist directly under `<body>`, and only exist once", "body > div.container"),
+            new SingularDomCheck("`div.container` should exist directly under the `body` tag", "body > div.container"),
             new MultipleDomCheck("elements with the `col` class must be inside a `row`", ".col", ".row .col"),
             new MultipleDomCheck("all `section`s must be inside the `container`", ".section", ".container .section"),
             new MultipleDomCheck("the `responsive-img` class is only for use on `img` tags", ".responsive-img", "img.responsive-img"),
