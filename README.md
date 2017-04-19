@@ -1,6 +1,6 @@
 # GitHubBot
 
-Github issue management bot orignally designed for Dogfalo/Materialize, but available for open use on any GitHub repository.  If you want to use it, see the [credit](#credit) section.
+Github issue management bot originally designed for Dogfalo/Materialize, but available for open use on any GitHub repository.  If you want to use it, see the [credit](#credit) section.
 
 Table of Contents
 ===
@@ -21,7 +21,7 @@ Table of Contents
 * [Method and Class Description](#method-and-class-description)
   * [Bot class](#bot_class)
   * [PlatformCheck extensions](#platformcheck_extensions)
-* [Asynchronouns running and start script](#asynchronouns-running-and-start-script)
+* [Asynchronous running and start script](#asynchronous-running-and-start-script)
 * [Credit](#credit)
 
 Introduction
@@ -66,7 +66,7 @@ JSHint is a popular static analysis tool for the javascript language.  It can de
 
 #### Specific Project Checks
 
-Preloaded with materialize definitions, but fully customizable, these checks are able to check advanced associations within code.  These are typically to ensure proper initialization and html structure.  These can be specified through the `PlatformCheck class`.
+Preloaded with materialize definitions, but fully customizable, these checks are able to check advanced associations within code.  These are typical to ensure proper initialization and HTML structure.  These can be specified through the `PlatformCheck class`.
 
 #### Runtime Console Warnings and Errors
 
@@ -80,7 +80,7 @@ On most platforms, the bot is able to detect when a configurable library is not 
 
 Each code example posted is rendered through Selenium on the latest Google Chrome build, screenshotted, and uploaded to a temporary git repository.  This repository is configurable, and by default deletes images and the history associated, as to use as little space as possible on GitHub.
 
-This was attempted using other APIs, such as Imgur, however the time between requests was simply too slow.
+This was attempted using other APIs, such as Imgur; however, the time between requests was simply too slow.
 
 ### Similar Issue Search
 
@@ -88,7 +88,7 @@ Based on configurable keywords, the bot is able to search and return a list of, 
 
 ### Reanalyzation
 
-Without making a new issue, the owner can request the bot re-analyze their code using a simple command `@BotName reanalyze`.  This thread runs asynchrounously to the main one, allowing for new issues to take priority.  Additionally, it edits its previous analyzation(s) to say "This comment is out of date. See below for an updated analyzation."
+Without making a new issue, the owner can request the bot re-analyze their code using a simple command `@BotName reanalyze`.  This thread runs asynchronously to the main one, allowing for new issues to take priority.  Additionally, it edits its previous analyzation(s) to say "This comment is out of date. See below for an updated analyzation."
 
 ### Auto closure
 
@@ -100,11 +100,11 @@ The bot can detect when a PR has been mentioned in an open issue.  This allows t
 
 ### Label Assignment
 
-The bot adds labels automatically to issues, and uses a configurable suffix to do so.  The "awaiting response" label is used when errors have been detected, and as a result is awaiting reanalyzation.  The issue owner can remove this label if this is incorrect, and it will not be assigned again.  If the issue is reanalyzed and the issues are resolved, the label will be removed.  Additionally, as mentioned in the previous section, the "has-pr" label is added or removed based on whether there is a PR mentioned, or the `ignore-pr` keyword was mentioned respectively.
+The bot adds labels automatically to issues and uses a configurable suffix to do so.  The "awaiting response" label is used when errors have been detected and, as a result, is awaiting reanalyzation.  The issue owner can remove this label if this is incorrect, and it will not be assigned again.  If the issue is reanalyzed and the issues are resolved, the label will be removed.  Additionally, as mentioned in the previous section, the "has-pr" label is added or removed based on whether there is a PR mentioned, or the `ignore-pr` keyword was mentioned respectively.
 
 ### Threading
 
-Through POSIX, this bot is able to run multiple threads simotaneously, allowing for speedy responses.  There is currently a `main` thread, which checks new issues, `reanalyze`, which reanalyzes per request, and the `has_pr` thread, which scans for and adds the `has-pr` label to issues with a PR mentioned in the comments.
+Through POSIX, this bot is able to run multiple threads simultaneously, allowing for speedy responses.  There is currently a `main` thread, which checks new issues, `reanalyze`, which reanalyzes per request, and the `has_pr` thread, which scans for and adds the `has-pr` label to issues with a PR mentioned in the comments.
 
 Configuration
 ===
@@ -116,9 +116,9 @@ There are 3 main files which contain configuration information, listed in order 
 This file is a simple JSON file containing 4 keys:
 
 * `gh_username` - username of the bot without the @ sign
-* `gh_password` - passsword for the bot
+* `gh_password` - password for the bot
 * `image_repo` - the name of the repo to store screenshots - syntax "user/repo"
-* `image_repo_path` - a relative of full path to the folder where images should be stored.  The trailing slash should be omitted.
+* `image_repo_path` - a relative or full path to the folder where images should be stored.  The trailing slash should be omitted.
 
 Below is a sample:
 
@@ -135,7 +135,7 @@ Contains 1 variable, `$repository`, which is an array.
 
 ### Bot.php
 
-Inside the PHP file itself are many more in-depth configuration options.  These should be condensed into a separate file, but, here we are.
+Inside the main PHP file, ther are many more in-depth configuration options.  These should be condensed into a separate file, but, here we are.
 
 On line 3, the `DEBUG` constant is set.  Currently, this is only used for more in-depth error reporting.
 
@@ -166,11 +166,11 @@ Any other blocks of text can be modified with a basic find command.
 
 ### html_header.html
 
-What to wrap the body section of the html in - top section.  Must contain `<html>` and `<body>` tags.  Should also include correct references to your project's JS and CSS.
+What to wrap the body section of the HTML in - top section.  Must contain `<html>` and `<body>` tags.  Should also include correct references to your project's JS and CSS.
 
 ### html_footer.html
 
-What to wrap the body section of the html in - bottom section.  Must contain `</body>` and `</html>` tags.
+What to wrap the body section of the HTML in - bottom section.  Must contain `</body>` and `</html>` tags.
 
 ### jshint_header.js
 
@@ -179,7 +179,7 @@ Contains the javascript to prepend to statically analyzed JS.  Should contain yo
 Installation
 ===
 
-In order to install this bot, you must use a linux based or unix based system.  It may work on Windows, however additional modifications may be required.
+In order to install this bot, you must use a Linux based or Unix based system.  It may work on Windows, however additional modifications may be required.
 
 ### Requirements
 
@@ -203,7 +203,7 @@ Usage
 
 1. Install the above dependencies
   * use `composer install` for composer dependencies
-2. Clone the github repository for screenshots
+2. Clone the GitHub repository for screenshots
 3. Properly fill out the configuration files to suit your bot
 4. Run `./start.sh` in a terminal
 5. Done!
@@ -212,7 +212,7 @@ The bot will log to logs/bot.log, and output to the terminal.
 
 ## Main Thread
 
-The main thread of the bot checks, by default, every 10 seconds if there are any newly opened issues.  If so, it iterates through them, extracts code snippets, analyzes them per the above information, and replys/labels the issue.  This is the highest priority thread and has the shortest sleep time.
+The main thread of the bot checks, by default, every 10 seconds if there are any newly opened issues.  If so, it iterates through them, extracts code snippets, analyzes them per the above information, and replies/labels the issue.  This is the highest priority thread and has the shortest sleep time.
 
 It can be run manually with the argument `main` or by creating an instance of `Bot` with `Bot::MAIN` as the second argument for the constructor.
 
@@ -220,13 +220,13 @@ It can be run manually with the argument `main` or by creating an instance of `B
 
 The PR thread of the bot checks, by default, every 100 seconds if there are any issues with PR numbers commented on them.  It does this by iterating over each issue's comments and checks for numbers with regex.  This is the lowest priority thread and has the longest sleep time.
 
-It can be run manually with the argument `pr` or by creating an instance of `Bot` with `Bot::HAS_PR` as the second argument for the constructor.
+It can be run manually with the argument `pr` or by creating an instance of `Bot` with `Bot::HAS_PR` as the second argument to the constructor.
 
 ## Reanalyzation Thread
 
-The reanalyzation thread of the bot checks, by default, every 60 seconds if there are any issues where the owner wishes to reanlyze the code.  If so, it analyzes the code per the above checks.  It does this by iterating over each issue's comments.
+The reanalyzation thread of the bot checks, by default, every 60 seconds if there are any issues where the owner wishes to reanalyze the code.  If so, it analyzes the code per the above checks.  It does this by iterating over each issue's comments.
 
-It can be run manually with the argument `reanalyze` or by creating an instance of `Bot` with `Bot::REANALYZE` as the second argument for the constructor.
+It can be run manually with the argument `reanalyze` or by creating an instance of `Bot` with `Bot::REANALYZE` as the second argument to the constructor.
 
 ## Autoclose Thread
 
@@ -237,12 +237,12 @@ It can be run manually with the argument `autoclose` or by creating an instance 
 Checks
 ===
 
-The `PlatformCheck` abstract class has many extensions, and is easy to add additional functionality.
+The `PlatformCheck` abstract class has many extensions and is easy to add additional functionality.
 
 Examples
 ===
 
-Below are some issues which demonstrates the bot's usefulness:
+Below are some issues which demonstrate the bot's usefulness:
 
 * https://github.com/smileytechguy/issueTesting/issues/82
 * https://github.com/smileytechguy/issueTesting/issues/80
@@ -252,7 +252,7 @@ Dependency Overview
 
 Here is what each dependency is used for:
 
-* tidy extension - html static analysis
+* tidy extension - HTML static analysis
 * composer - package management
 * composer requirements
   * knplabs/github-api - connect to github for issues, comments, labels, etc
@@ -391,15 +391,15 @@ Create these with the format `(string $explaination, string ...$checks)` unless 
 * `SingularOrNonexistentDomCheck` - returns true if the element appears once or not at all
 * `SingularDomCheck` - returns true if the check is in the DOM exactly once
 * `MultipleDomCheck` - returns true if the same number of elements are in each check (e.g. input in wrappers, etc)
-* `DomJSCheck` - returns true if the DOM check doesnt exist or the DOM check exists and the JS check also exists
-* `JSDomCheck` - returns true if the JS check doesnt exist or the JS check exists and the DOM check also exists
+* `DomJSCheck` - returns true if the DOM check doesn't exist or the DOM check exists and the JS check also exists
+* `JSDomCheck` - returns true if the JS check doesn't exist or the JS check exists and the DOM check also exists
 
-Asynchronouns running and start script
+Asynchronous running and start script
 ===
 
-The contents of start.sh allow for asynchronous running of all threads independently:
+The contents of start.sh allow for the asynchronous running of all threads independently:
 
-Additionally, it logs to logs/bot.log, and will restart 
+Additionally, it logs to logs/bot.log and will restart automatically on error. 
 
 ```shell
 echo "" > logs/bot.log
@@ -417,9 +417,9 @@ php Bot.php inactive >> logs/bot.log 2>&1 &
 trap ctrl_c INT
 
 function ctrl_c() {
-	kill -2 -$PGID
-	brew services restart selenium-server-standalone >> logs/bot.log 2>&1
-	exit 130
+    kill -2 -$PGID
+    brew services restart selenium-server-standalone >> logs/bot.log 2>&1
+    exit 130
 }
 
 tail -f logs/bot.log
