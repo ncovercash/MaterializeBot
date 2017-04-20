@@ -645,6 +645,21 @@ class Bot {
                     $hasIssues = true;
                 }
 
+                try {
+                    // Console
+                    $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                    $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues);
+    
+                    // Image
+                    $image = $this->getSeleniumImage();
+                    $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                } catch (Exception $e) {
+                    $statement .= "* Unable to render content with selenium  \n";
+                    $hasIssues = true;
+
+                    $this->initSelenium();
+                }
+
                 $errors = self::getHTMLBodyErrors($html);
 
                 foreach ($errors as $error) {
@@ -668,21 +683,6 @@ class Bot {
                 foreach ($errors as $error) {
                     $statement .= "* ".$error."  \n";
                     $hasIssues = true;
-                }
-
-                try {
-                    // Console
-                    $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
-                    $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues);
-    
-                    // Image
-                    $image = $this->getSeleniumImage();
-                    $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
-                } catch (Exception $e) {
-                    $statement .= "* Unable to render content with selenium  \n";
-                    $hasIssues = true;
-
-                    $this->initSelenium();
                 }
 
                 if ($hasIssues) {
@@ -720,6 +720,21 @@ class Bot {
                         $hasIssues = true;
                     }
 
+                    try {
+                        // Console
+                        $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                        $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues, "Codepen [".$i."](".$link.") ");
+        
+                        // Image
+                        $image = $this->getSeleniumImage();
+                        $statement .= "  \n  \nCodepen [".$i."](".$link.") image rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                    } catch (Exception $e) {
+                        $statement .= "* Codepen [".$i."](".$link.") Unable to render content with selenium  \n";
+                        $hasIssues = true;
+
+                        $this->initSelenium();
+                    }
+
                     $errors = self::getHTMLBodyErrors($html);
 
                     foreach ($errors as $error) {
@@ -741,21 +756,6 @@ class Bot {
                     foreach ($errors as $error) {
                         $statement .= "* Codepen [".$i."](".$link.") ".$error."  \n";
                         $hasIssues = true;
-                    }
-
-                    try {
-                        // Console
-                        $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
-                        $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues, "Codepen [".$i."](".$link.") ");
-        
-                        // Image
-                        $image = $this->getSeleniumImage();
-                        $statement .= "  \n  \nCodepen [".$i."](".$link.") image rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
-                    } catch (Exception $e) {
-                        $statement .= "* Codepen [".$i."](".$link.") Unable to render content with selenium  \n";
-                        $hasIssues = true;
-
-                        $this->initSelenium();
                     }
 
                     $i++;
@@ -806,6 +806,21 @@ class Bot {
                     $hasIssues = true;
                 }
 
+                try {
+                    // Console
+                    $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                    $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues);
+    
+                    // Image
+                    $image = $this->getSeleniumImage();
+                    $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                } catch (Exception $e) {
+                    $statement .= "* Unable to render content with selenium  \n";
+                    $hasIssues = true;
+
+                    $this->initSelenium();
+                }
+
                 $errors = self::getHTMLBodyErrors($html);
 
                 foreach ($errors as $error) {
@@ -828,21 +843,6 @@ class Bot {
                 foreach ($errors as $error) {
                     $statement .= "* ".$error."  \n";
                     $hasIssues = true;
-                }
-
-                try {
-                    // Console
-                    $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
-                    $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues);
-    
-                    // Image
-                    $image = $this->getSeleniumImage();
-                    $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
-                } catch (Exception $e) {
-                    $statement .= "* Unable to render content with selenium  \n";
-                    $hasIssues = true;
-
-                    $this->initSelenium();
                 }
 
                 if ($hasIssues) {
@@ -883,6 +883,21 @@ class Bot {
 
                     $errors = self::getHTMLBodyErrors($html);
 
+                    try {
+                        // Console
+                        $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                        $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues, "Fiddle [".$i."](".$link.") ");
+        
+                        // Image
+                        $image = $this->getSeleniumImage();
+                        $statement .= "  \n  \nFiddle [".$i."](".$link.") image rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                    } catch (Exception $e) {
+                        $statement .= "* Fiddle [".$i."](".$link.") Unable to render content with selenium  \n";
+                        $hasIssues = true;
+
+                        $this->initSelenium();
+                    }
+
                     foreach ($errors as $error) {
                         if (strlen($error) != 0) {
                             $statement .= "* Fiddle [".$i."](".$link.") HTML ".$error."  \n";
@@ -902,21 +917,6 @@ class Bot {
                     foreach ($errors as $error) {
                         $statement .= "* Fiddle [".$i."](".$link.") ".$error."  \n";
                         $hasIssues = true;
-                    }
-
-                    try {
-                        // Console
-                        $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
-                        $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues, "Fiddle [".$i."](".$link.") ");
-        
-                        // Image
-                        $image = $this->getSeleniumImage();
-                        $statement .= "  \n  \nFiddle [".$i."](".$link.") image rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
-                    } catch (Exception $e) {
-                        $statement .= "* Fiddle [".$i."](".$link.") Unable to render content with selenium  \n";
-                        $hasIssues = true;
-
-                        $this->initSelenium();
                     }
 
                     $i++;
@@ -950,40 +950,9 @@ class Bot {
             exec(self::CODEDOWN_LOCATION." html < tmp/tmp.md", $html);
             $html = implode("\n", $html);
 
-            if (preg_match("/<body>/", $html)) {
-                $errors = self::getHTMLErrors($html);
-            } else {
-                $errors = self::getHTMLBodyErrors($html);
-            }
-
-            foreach ($errors as $error) {
-                if (strlen($error) != 0) {
-                    $statement .= "* HTML ".$error."  \n";
-                    $hasIssues = true;
-                }
-            }
-
             exec(self::CODEDOWN_LOCATION." javascript < tmp/tmp.md", $js);
             exec(self::CODEDOWN_LOCATION." js < tmp/tmp.md", $js);
             $js = implode("\n", $js);
-
-            $errors = self::getJSErrors($js);
-            
-            foreach ($errors as $error) {
-                if (strlen($error) != 0) {
-                    $statement .= "* JS ".$error."  \n";
-                    $hasIssues = true;
-                }
-            }
-
-            $errors = self::specificProjectErrors($html, $js, $hasIssues);
-            
-            foreach ($errors as $error) {
-                if (strlen($error) != 0) {
-                    $statement .= "* ".$error."  \n";
-                    $hasIssues = true;
-                }
-            }
 
             exec(self::CODEDOWN_LOCATION." css < tmp/tmp.md", $css);
             $css = implode("\n", $css);
@@ -1005,6 +974,37 @@ class Bot {
                 $hasIssues = true;
 
                 $this->initSelenium();
+            }
+
+            if (preg_match("/<body>/", $html)) {
+                $errors = self::getHTMLErrors($html);
+            } else {
+                $errors = self::getHTMLBodyErrors($html);
+            }
+
+            foreach ($errors as $error) {
+                if (strlen($error) != 0) {
+                    $statement .= "* HTML ".$error."  \n";
+                    $hasIssues = true;
+                }
+            }
+
+            $errors = self::getJSErrors($js);
+            
+            foreach ($errors as $error) {
+                if (strlen($error) != 0) {
+                    $statement .= "* JS ".$error."  \n";
+                    $hasIssues = true;
+                }
+            }
+
+            $errors = self::specificProjectErrors($html, $js, $hasIssues);
+            
+            foreach ($errors as $error) {
+                if (strlen($error) != 0) {
+                    $statement .= "* ".$error."  \n";
+                    $hasIssues = true;
+                }
             }
 
             return $statement."  \n";
@@ -1071,6 +1071,26 @@ class Bot {
                     $hasIssues = true;
                 }
 
+                try {
+                    // Console
+                    if (preg_match("/<body>/", $html)) {
+                        $seleniumErrors = $this->getSeleniumErrorsFromHTMLJSandCSS($html, $js, $css);
+                    } else {
+                        $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                    }
+                    
+                    $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues);
+    
+                    // Image
+                    $image = $this->getSeleniumImage();
+                    $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                } catch (Exception $e) {
+                    $statement .= "* Unable to render content with selenium  \n";
+                    $hasIssues = true;
+
+                    $this->initSelenium();
+                }
+
                 if (preg_match("/<body>/", $html)) {
                     $errors = self::getHTMLErrors($html);
                 } else {
@@ -1097,26 +1117,6 @@ class Bot {
                 foreach ($errors as $error) {
                     $statement .= "* ".$error."  \n";
                     $hasIssues = true;
-                }
-
-                try {
-                    // Console
-                    if (preg_match("/<body>/", $html)) {
-                        $seleniumErrors = $this->getSeleniumErrorsFromHTMLJSandCSS($html, $js, $css);
-                    } else {
-                        $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
-                    }
-                    
-                    $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues);
-    
-                    // Image
-                    $image = $this->getSeleniumImage();
-                    $statement .= "  \n  \nImage rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
-                } catch (Exception $e) {
-                    $statement .= "* Unable to render content with selenium  \n";
-                    $hasIssues = true;
-
-                    $this->initSelenium();
                 }
 
                 if ($hasIssues) {
@@ -1181,6 +1181,25 @@ class Bot {
                         $hasIssues = true;
                     }
 
+                    try {
+                        // Console
+                        if (preg_match("/<body>/", $html)) {
+                            $seleniumErrors = $this->getSeleniumErrorsFromHTMLJSandCSS($html, $js, $css);
+                        } else {
+                            $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
+                        }
+                        $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues, "Bin [".$i."](".$link.") ");
+        
+                        // Image
+                        $image = $this->getSeleniumImage();
+                        $statement .= "  \n  \nBin [".$i."](".$link.") image rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
+                    } catch (Exception $e) {
+                        $statement .= "* Bin [".$i."](".$link.") Unable to render content with selenium  \n";
+                        $hasIssues = true;
+
+                        $this->initSelenium();
+                    }
+
                     if (preg_match("/<body>/", $html)) {
                         $errors = self::getHTMLErrors($html);
                     } else {
@@ -1206,25 +1225,6 @@ class Bot {
                     foreach ($errors as $error) {
                         $statement .= "* Bin [".$i."](".$link.") ".$error."  \n";
                         $hasIssues = true;
-                    }
-
-                    try {
-                        // Console
-                        if (preg_match("/<body>/", $html)) {
-                            $seleniumErrors = $this->getSeleniumErrorsFromHTMLJSandCSS($html, $js, $css);
-                        } else {
-                            $seleniumErrors = $this->getSeleniumErrorsFromBodyJSandCSS($html, $js, $css);
-                        }
-                        $statement .= self::processSeleniumErrors($seleniumErrors, $hasIssues, "Bin [".$i."](".$link.") ");
-        
-                        // Image
-                        $image = $this->getSeleniumImage();
-                        $statement .= "  \n  \nBin [".$i."](".$link.") image rendered with ".$this->seleniumDriver->getCapabilities()->getBrowserName()." v".$this->seleniumDriver->getCapabilities()->getVersion().": [".$image."](".$image.")  \n";
-                    } catch (Exception $e) {
-                        $statement .= "* Bin [".$i."](".$link.") Unable to render content with selenium  \n";
-                        $hasIssues = true;
-
-                        $this->initSelenium();
                     }
 
                     $i++;
