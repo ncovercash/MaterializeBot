@@ -362,7 +362,7 @@ Method and class description
 
 ### Issue label functions
 
-* `string public function checkFeatureLabel(array $issue) : string - get whether the issue is likely a feature request, and apply label if needed
+* `string public function checkFeatureLabel(array $issue) : string` - get whether the issue is likely a feature request, and apply label if needed
 * `protected function updatePRLabel(array $issue)` - check has-pr status of issue
 
 ### Issue PR label wrapper functions
