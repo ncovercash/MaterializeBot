@@ -325,7 +325,7 @@ Method and class description
 
 ### Static analysis functions
 
-* `public static function getHTMLErrors(string $in) : array - gets html errors based off input
+* `public static function getHTMLErrors(string $in) : array` - gets html errors based off input
 * `public static function getJSErrors(string $in) : array` - get errors from JS (static)
 * `public function specificProjectErrors(string $html, string $js, bool &$hasIssues) : array` - get errors specific to the project
 
