@@ -2,6 +2,8 @@
 
 Github issue management bot originally designed for Dogfalo/Materialize, but available for open use on any GitHub repository.  If you want to use it, see the [credit](#credit) section.
 
+This project is no longer maintained, however, if you'd like to use it, breathe life into it, or anything else, feel free to shoot me an e-mail for help/ownership/anything else!
+
 Table of Contents
 ===
 
